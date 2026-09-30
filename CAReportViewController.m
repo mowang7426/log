@@ -56,10 +56,9 @@
             [rows addObject:head];
             for (NSDictionary *r in reports) {
                 NSString *name=r[@"procName"] ?: r[@"app_name"] ?: r[@"fileName"] ?: @"未知日志";
-                PSSpecifier *item=[PSSpecifier preferenceSpecifierNamed:name target:self set:nil get:nil detail:[CAReportViewController class] cell:PSLinkCell edit:nil];
+                PSSpecifier *item=[PSSpecifier preferenceSpecifierNamed:name target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
                 [item setProperty:r[@"path"] ?: @"" forKey:@"reportPath"];
-                [item setProperty:r[@"category"] ?: @"其他" forKey:@"category"];
-                [item setProperty:@YES forKey:@"isController"];
+                [item setProperty:NSStringFromSelector(@selector(openReport:)) forKey:@"action"];
                 [item setProperty:[NSString stringWithFormat:@"%@ · %@",r[@"timestamp"] ?: @"时间未知",r[@"diagnosis"] ?: @"暂无摘要"] forKey:@"footerText"];
                 [rows addObject:item];
             }
@@ -70,4 +69,16 @@
     return _specifiers;
 }
 - (void)viewDidLoad { [super viewDidLoad]; self.title=_singleReport ? (_singleReport[@"procName"] ?: @"日志详情") : (_category ?: @"全部日志"); }
+
+- (void)openReport:(PSSpecifier *)specifier {
+    NSString *path=[specifier propertyForKey:@"reportPath"];
+    NSDictionary *report=[[CALogStore sharedStore] reportAtPath:path];
+    if (![report isKindOfClass:[NSDictionary class]]) return;
+    NSDictionary *exception=report[@"exception"];
+    NSString *exceptionType=[exception isKindOfClass:[NSDictionary class]] ? (exception[@"type"] ?: @"未知") : @"未知";
+    NSString *message=[NSString stringWithFormat:@"分类：%@\n时间：%@\n异常：%@\n\n%@\n\n文件：%@", report[@"category"] ?: @"其他", report[@"timestamp"] ?: @"未知", exceptionType, report[@"diagnosis"] ?: @"暂无诊断", report[@"fileName"] ?: @"未知"];
+    UIAlertController *alert=[UIAlertController alertControllerWithTitle:report[@"procName"] ?: report[@"app_name"] ?: @"日志详情" message:message preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"关闭" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
 @end
