@@ -1,7 +1,8 @@
 #import "CAReportViewController.h"
 #import "CALogStore.h"
-#import <Preferences/PSListController.h>
+#import <Preferences/Preferences.h>
 @implementation CAReportViewController { NSArray *_items; NSString *_category; }
+- (instancetype)initWithSpecifier:(PSSpecifier *)specifier { self=[super initWithStyle:UITableViewStyleInsetGrouped]; if (self) { _specifier=specifier; } return self; }
 - (void)viewDidLoad { [super viewDidLoad]; _category=self.specifier.properties[@"category"] ?: @"其他"; self.title=_category; self.tableView.rowHeight=76; [self reload]; self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemRefresh target:self action:@selector(reload)]; }
 - (void)reload { _items=[[CALogStore sharedStore] reportsForCategory:_category]; [self.tableView reloadData]; }
 - (NSInteger)tableView:(UITableView *)t numberOfRowsInSection:(NSInteger)s { return _items.count; }
