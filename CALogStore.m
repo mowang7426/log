@@ -64,6 +64,31 @@ static NSString * const CAUnknown = @"其他";
     }
     return result.count ? result : nil;
 }
+- (NSDictionary *)scanDiagnostics {
+    NSString *root=@"/var/mobile/Library/Logs/CrashReporter";
+    NSFileManager *fm=[NSFileManager defaultManager];
+    BOOL isDirectory=NO;
+    BOOL exists=[fm fileExistsAtPath:root isDirectory:&isDirectory];
+    NSError *error=nil;
+    NSDirectoryEnumerator *enumerator=exists && isDirectory ? [fm enumeratorAtPath:root] : nil;
+    NSUInteger enumerated=0, matched=0, readable=0, parsed=0;
+    NSString *relative=nil;
+    while ((relative=[enumerator nextObject])) {
+        enumerated++;
+        NSString *lower=relative.lowercaseString;
+        if (![lower hasSuffix:@".ips"] && ![lower hasSuffix:@".ips.synced"]) continue;
+        matched++;
+        NSString *path=[root stringByAppendingPathComponent:relative];
+        NSData *data=[NSData dataWithContentsOfFile:path options:0 error:&error];
+        if (!data) continue;
+        readable++;
+        if ([self parse:data]) parsed++;
+    }
+    return @{@"path":root, @"exists":@(exists), @"isDirectory":@(isDirectory),
+             @"enumerated":@(enumerated), @"matched":@(matched), @"readable":@(readable),
+             @"parsed":@(parsed), @"error":error.localizedDescription ?: @""};
+}
+
 - (NSString *)categoryForReport:(NSDictionary *)r {
     NSString *blob=[[r description] lowercaseString]; NSString *bug=[r[@"bug_type"] description];
     if ([blob containsString:@"jetsam"]||[blob containsString:@"memory pressure"]||[blob containsString:@"memorystatus"]) return @"内存";
