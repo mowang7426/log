@@ -10,7 +10,7 @@
 - (instancetype)initWithSpecifier:(PSSpecifier *)specifier {
     self=[super init];
     if (self) {
-        _specifier=specifier;
+        self.specifier=specifier;
         _category=[specifier.properties[@"category"] copy] ?: @"其他";
     }
     return self;
