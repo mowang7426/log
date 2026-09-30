@@ -1,66 +1,53 @@
 #import "CAReportViewController.h"
 #import "CALogStore.h"
 #import <Preferences/PSSpecifier.h>
+#import <Preferences/PSTableCell.h>
 
 @implementation CAReportViewController {
     NSArray *_items;
     NSString *_category;
+    NSDictionary *_singleReport;
 }
-
 - (instancetype)initWithSpecifier:(PSSpecifier *)specifier {
     self=[super init];
     if (self) {
         self.specifier=specifier;
-        NSString *category=[specifier propertyForKey:@"category"];
-        if (![category isKindOfClass:[NSString class]]) category=specifier.name;
-        _category=[category copy] ?: @"其他";
+        _category=[[specifier propertyForKey:@"category"] copy];
+        id report=[specifier propertyForKey:@"report"];
+        if ([report isKindOfClass:[NSDictionary class]]) _singleReport=report;
     }
     return self;
 }
-
 - (id)specifiers {
     if (!_specifiers) {
-        [self reloadReports];
         NSMutableArray *rows=[NSMutableArray array];
-        for (NSDictionary *report in _items) {
-            NSString *name=report[@"procName"] ?: report[@"app_name"] ?: report[@"fileName"] ?: @"未知日志";
-            NSString *detail=report[@"diagnosis"] ?: @"点击查看日志详情";
-            PSSpecifier *row=[PSSpecifier preferenceSpecifierNamed:name target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
-            [row setProperty:detail forKey:@"footerText"];
-            [row setProperty:report forKey:@"report"];
-            [rows addObject:row];
-        }
-        if (!rows.count) {
-            PSSpecifier *empty=[PSSpecifier preferenceSpecifierNamed:@"没有发现此类日志" target:self set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil];
-            [rows addObject:empty];
+        if (_singleReport) {
+            NSDictionary *r=_singleReport;
+            NSArray *fields=@[
+                @[@"进程",r[@"procName"]?:r[@"app_name"]?:@"未知"],
+                @[@"分类",r[@"category"]?:@"其他"],
+                @[@"时间",r[@"timestamp"]?:r[@"captureTime"]?:@"未知"],
+                @[@"异常",[r[@"exception"] isKindOfClass:[NSDictionary class]]?(r[@"exception"][@"type"]?:@"未知"):@"无"],
+                @[@"诊断",r[@"diagnosis"]?:@"暂无规则分析"],
+                @[@"文件",r[@"fileName"]?:@"未知"]
+            ];
+            for (NSArray *f in fields) [rows addObject:[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"%@：%@",f[0],f[1]] target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
+        } else {
+            NSArray *reports=_category.length?[[CALogStore sharedStore] reportsForCategory:_category]:[[CALogStore sharedStore] reports];
+            PSSpecifier *head=[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"%@（%lu）",_category?:@"全部日志",(unsigned long)reports.count] target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
+            [rows addObject:head];
+            for (NSDictionary *r in reports) {
+                NSString *title=r[@"procName"]?:r[@"app_name"]?:r[@"fileName"]?:@"未知日志";
+                NSString *sub=[NSString stringWithFormat:@"%@ · %@",r[@"timestamp"]?:@"时间未知",r[@"diagnosis"]?:@""];
+                PSSpecifier *item=[PSSpecifier preferenceSpecifierNamed:title target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil];
+                [item setProperty:sub forKey:@"footerText"];
+                [rows addObject:item];
+            }
+            if (!reports.count) [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"没有匹配的日志" target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
         }
         _specifiers=[rows copy];
     }
     return _specifiers;
 }
-
-- (void)reloadReports {
-    _items=[[[CALogStore sharedStore] reportsForCategory:_category] copy];
-}
-
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    self.title=_category ?: @"分析日志";
-}
-
-- (void)reloadSpecifiers {
-    _specifiers=nil;
-    [self reloadReports];
-    [super reloadSpecifiers];
-}
-
-- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-    PSSpecifier *specifier=[self specifierAtIndexPath:indexPath];
-    NSDictionary *report=[specifier propertyForKey:@"report"];
-    if (![report isKindOfClass:[NSDictionary class]]) return;
-    NSString *text=[NSString stringWithFormat:@"%@\n\n%@\n\n%@", report[@"fileName"] ?: @"日志", report[@"diagnosis"] ?: @"", report[@"path"] ?: @""];
-    UIAlertController *alert=[UIAlertController alertControllerWithTitle:report[@"procName"] ?: report[@"app_name"] ?: @"日志" message:text preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"关闭" style:UIAlertActionStyleCancel handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
-}
+- (void)viewDidLoad { [super viewDidLoad]; self.title=_singleReport?(_singleReport[@"procName"]?:@"日志详情"):_category?:@"全部日志"; }
 @end
