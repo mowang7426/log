@@ -29,7 +29,12 @@
     return self;
 }
 
-- (id)specifiers {
+- (instancetype)initWithCategory:(NSString *)category {
+    self=[super init];
+    if (self) _category=[category copy];
+    return self;
+}
+
     if (!_specifiers) {
         NSMutableArray *rows=[NSMutableArray array];
         if (_singleReport) {
