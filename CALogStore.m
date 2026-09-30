@@ -8,23 +8,52 @@ static NSString * const CAUnknown = @"其他";
 - (NSArray<NSString *> *)roots {
     return @[@"/var/mobile/Library/Logs/CrashReporter",
              @"/var/mobile/Library/Logs/Analytics",
+             @"/var/mobile/Library/Logs/DiagnosticReports",
+             @"/var/mobile/Library/Logs/CrashReporter/DiagnosticLogs",
              @"/private/var/mobile/Library/Logs/CrashReporter",
              @"/private/var/mobile/Library/Logs/Analytics",
-             @"/var/mobile/Library/Logs/DiagnosticReports"];
+             @"/private/var/mobile/Library/Logs/DiagnosticReports",
+             @"/var/db/diagnostics"];
+}
+
+- (NSArray<NSString *> *)ipsPaths {
+    NSMutableArray *paths=[NSMutableArray array];
+    NSFileManager *fm=NSFileManager.defaultManager;
+    NSDirectoryEnumerationOptions options=NSDirectoryEnumerationSkipsHiddenFiles;
+    for (NSString *root in [self roots]) {
+        BOOL isDirectory=NO;
+        if (![fm fileExistsAtPath:root isDirectory:&isDirectory] || !isDirectory) continue;
+        NSDirectoryEnumerator *enumerator=[fm enumeratorAtPath:root];
+        NSString *relative=nil;
+        while ((relative=[enumerator nextObject])) {
+            if ([[relative.pathExtension lowercaseString] isEqualToString:@"ips"]) {
+                [paths addObject:[root stringByAppendingPathComponent:relative]];
+            }
+        }
+    }
+    return paths;
 }
 
 - (NSArray<NSDictionary *> *)reports {
-    NSMutableArray *out=[NSMutableArray array]; NSFileManager *fm=NSFileManager.defaultManager;
-    for (NSString *root in [self roots]) {
-        NSArray *files=[fm contentsOfDirectoryAtPath:root error:nil];
-        for (NSString *name in files) {
-            if (![[name.pathExtension lowercaseString] isEqualToString:@"ips"]) continue;
-            NSString *path=[root stringByAppendingPathComponent:name]; NSData *data=[NSData dataWithContentsOfFile:path options:0 error:nil]; if (!data) continue;
-            NSDictionary *d=[self parse:data]; if (!d) continue;
-            NSMutableDictionary *r=[d mutableCopy]; r[@"path"]=path; r[@"fileName"]=name; r[@"category"]=[self categoryForReport:r]; r[@"diagnosis"]=[self diagnosisForReport:r]; [out addObject:r];
-        }
+    NSMutableArray *out=[NSMutableArray array];
+    for (NSString *path in [self ipsPaths]) {
+        NSData *data=[NSData dataWithContentsOfFile:path options:0 error:nil];
+        if (!data) continue;
+        NSDictionary *d=[self parse:data];
+        if (!d) continue;
+        NSMutableDictionary *r=[d mutableCopy];
+        r[@"path"]=path;
+        r[@"fileName"]=path.lastPathComponent;
+        r[@"category"]=[self categoryForReport:r];
+        r[@"diagnosis"]=[self diagnosisForReport:r];
+        [out addObject:r];
     }
-    [out sortUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) { return [b[@"timestamp"] compare:a[@"timestamp"]]; }]; return out;
+    [out sortUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
+        NSString *ta=[a[@"timestamp"] description] ?: @"";
+        NSString *tb=[b[@"timestamp"] description] ?: @"";
+        return [tb compare:ta];
+    }];
+    return out;
 }
 - (NSDictionary *)parse:(NSData *)data {
     NSString *s=[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding]; if (!s) return nil;
