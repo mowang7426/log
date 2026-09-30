@@ -12,9 +12,14 @@
     self=[super init];
     if (self) {
         self.specifier=specifier;
-        _category=[[specifier propertyForKey:@"category"] copy];
-        id report=[specifier propertyForKey:@"report"];
-        if ([report isKindOfClass:[NSDictionary class]]) _singleReport=report;
+        NSDictionary *properties=specifier.properties;
+        id category=properties[@"category"];
+        if ([category isKindOfClass:[NSString class]]) _category=[category copy];
+        id path=properties[@"reportPath"];
+        if ([path isKindOfClass:[NSString class]]) {
+            _singleReport=[[[CALogStore sharedStore] reportAtPath:path] copy];
+        }
+        if (!_category && _singleReport[@"category"]) _category=[_singleReport[@"category"] copy];
     }
     return self;
 }

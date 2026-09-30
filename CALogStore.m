@@ -24,7 +24,19 @@ static NSString * const CAUnknown = @"其他";
     return paths;
 }
 
-- (NSArray<NSDictionary *> *)reports {
+- (NSDictionary *)reportAtPath:(NSString *)path {
+    if (![path isKindOfClass:[NSString class]] || !path.length) return nil;
+    NSData *data=[NSData dataWithContentsOfFile:path options:0 error:nil];
+    if (!data) return nil;
+    NSDictionary *parsed=[self parse:data];
+    NSMutableDictionary *report=parsed ? [parsed mutableCopy] : [NSMutableDictionary dictionary];
+    report[@"path"]=path;
+    report[@"fileName"]=path.lastPathComponent;
+    report[@"category"]=[self categoryForReport:report];
+    report[@"diagnosis"]=[self diagnosisForReport:report];
+    return report;
+}
+
     NSMutableArray *out=[NSMutableArray array];
     for (NSString *path in [self ipsPaths]) {
         NSData *data=[NSData dataWithContentsOfFile:path options:0 error:nil];

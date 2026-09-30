@@ -16,7 +16,7 @@
             NSString *name=report[@"procName"] ?: report[@"app_name"] ?: report[@"fileName"] ?: @"未知日志";
             NSString *category=report[@"category"] ?: @"其他";
             PSSpecifier *row=[PSSpecifier preferenceSpecifierNamed:name target:self set:nil get:nil detail:[CAReportViewController class] cell:PSLinkCell edit:nil];
-            [row setProperty:report forKey:@"report"];
+            [row setProperty:report[@"path"] forKey:@"reportPath"];
             [row setProperty:category forKey:@"category"];
             [row setProperty:@YES forKey:@"isController"];
             [items addObject:row];
