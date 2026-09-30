@@ -93,6 +93,7 @@
     [self presentViewController:alert animated:YES completion:nil];
 }
 
+- (void)reloadSpecifiers {
     _specifiers=nil;
     [super reloadSpecifiers];
 }
@@ -101,7 +102,7 @@
     (void)value;
     (void)specifier;
     _specifiers=nil;
-    [self reloadSpecifiers];
+    [super reloadSpecifiers];
 }
 
 @end
