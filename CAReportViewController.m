@@ -35,6 +35,7 @@
     return self;
 }
 
+- (id)specifiers {
     if (!_specifiers) {
         NSMutableArray *rows=[NSMutableArray array];
         if (_singleReport) {
