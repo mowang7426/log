@@ -32,8 +32,7 @@
         NSString *line=[NSString stringWithFormat:@"%@ · 发现 %@ 个 IPS · 解析 %@ 个", [diagnostics[@"exists"] boolValue] ? @"目录可访问" : @"目录不可访问", diagnostics[@"matched"] ?: @0, diagnostics[@"parsed"] ?: @0];
         [items addObject:[PSSpecifier preferenceSpecifierNamed:line target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
 
-        PSSpecifier *refresh=[PSSpecifier preferenceSpecifierNamed:@"重新扫描" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
-        [refresh setProperty:NSStringFromSelector(@selector(reloadNow)) forKey:@"action"];
+        PSSpecifier *refresh=[PSSpecifier preferenceSpecifierNamed:@"重新扫描" target:self set:@selector(reloadNow) get:nil detail:nil cell:PSButtonCell edit:nil];
         [items addObject:refresh];
         _specifiers=[items copy];
     }

@@ -12,13 +12,17 @@
     self=[super init];
     if (self) {
         self.specifier=specifier;
-        NSDictionary *p=specifier.properties;
-        id category=p[@"category"];
-        if ([category isKindOfClass:[NSString class]] && [category length]) _category=[category copy];
-        id path=p[@"reportPath"];
-        if ([path isKindOfClass:[NSString class]] && [path length]) {
-            _singleReport=[[[CALogStore sharedStore] reportAtPath:path] copy];
+        id category=[specifier propertyForKey:@"category"];
+        if (![category isKindOfClass:[NSString class]] || ![category length]) category=specifier.name;
+        if ([category isKindOfClass:[NSString class]]) {
+            NSArray *known=@[@"崩溃",@"内存",@"重启",@"资源",@"其他",@"全部日志"];
+            for (NSString *value in known) {
+                if ([category hasPrefix:value]) { _category=[value copy]; break; }
+            }
         }
+        id path=[specifier propertyForKey:@"reportPath"];
+        if (![path isKindOfClass:[NSString class]] || ![path length]) path=specifier.properties[@"reportPath"];
+        if ([path isKindOfClass:[NSString class]] && [path length]) _singleReport=[[[CALogStore sharedStore] reportAtPath:path] copy];
         if (!_category && [_singleReport[@"category"] isKindOfClass:[NSString class]]) _category=[_singleReport[@"category"] copy];
         if (!_category) _category=@"全部日志";
     }
