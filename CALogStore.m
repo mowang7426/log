@@ -46,5 +46,11 @@ static NSString * const CAUnknown = @"其他";
     if ([cat isEqualToString:@"资源"]) return @"检测到资源、看门狗或系统负载相关事件。";
     return @"暂未识别日志类型，请查看原始内容。";
 }
-- (NSArray<NSDictionary *> *)reportsForCategory:(NSString *)category { NSPredicate *p=[NSPredicate predicateWithBlock:^BOOL(NSDictionary *r, BOOL *stop){ return [r[@"category"] isEqual:category]; }]; return [[self reports] filteredArrayUsingPredicate:p]; }
+- (NSArray<NSDictionary *> *)reportsForCategory:(NSString *)category {
+    NSMutableArray *matches=[NSMutableArray array];
+    for (NSDictionary *report in [self reports]) {
+        if ([report[@"category"] isEqualToString:category]) [matches addObject:report];
+    }
+    return matches;
+}
 @end
