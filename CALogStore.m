@@ -19,7 +19,6 @@ static NSString * const CAUnknown = @"其他";
 - (NSArray<NSString *> *)ipsPaths {
     NSMutableArray *paths=[NSMutableArray array];
     NSFileManager *fm=NSFileManager.defaultManager;
-    NSDirectoryEnumerationOptions options=NSDirectoryEnumerationSkipsHiddenFiles;
     for (NSString *root in [self roots]) {
         BOOL isDirectory=NO;
         if (![fm fileExistsAtPath:root isDirectory:&isDirectory] || !isDirectory) continue;
