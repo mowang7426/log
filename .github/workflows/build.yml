@@ -1,0 +1,32 @@
+name: Build Debian packages
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: Build ${{ matrix.arch }}
+    runs-on: macos-13
+    strategy:
+      fail-fast: false
+      matrix:
+        arch: [arm64, arm64e]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Install Theos
+        uses: theos/setup-theos@main
+        with:
+          theos-src: theos/theos
+      - name: Build rootless package
+        env:
+          ARCHS: ${{ matrix.arch }}
+        run: |
+          make package FINALPACKAGE=1 THEOS_PACKAGE_SCHEME=rootless ARCHS="$ARCHS"
+      - name: Upload package
+        uses: actions/upload-artifact@v4
+        with:
+          name: CrashAnalyzer-${{ matrix.arch }}
+          path: packages/*.deb
