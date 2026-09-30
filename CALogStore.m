@@ -6,37 +6,19 @@ static NSString * const CAUnknown = @"其他";
 + (instancetype)sharedStore { static CALogStore *s; static dispatch_once_t once; dispatch_once(&once, ^{ s=[self new]; }); return s; }
 
 - (NSArray<NSString *> *)roots {
-    return @[@"/var/mobile/Library/Logs/CrashReporter",
-             @"/var/mobile/Library/Logs/Analytics",
-             @"/var/mobile/Library/Logs/DiagnosticReports",
-             @"/var/mobile/Library/Logs/CrashReporter/DiagnosticLogs",
-             @"/var/mobile/Library/Logs/CrashReporter/Retired",
-             @"/var/mobile/Library/Logs/CrashReporter/Legacy",
-             @"/private/var/mobile/Library/Logs/CrashReporter",
-             @"/private/var/mobile/Library/Logs/CrashReporter/DiagnosticLogs",
-             @"/private/var/mobile/Library/Logs/Analytics",
-             @"/private/var/mobile/Library/Logs/Analytics/DiagnosticLogs",
-             @"/private/var/mobile/Library/Logs/DiagnosticReports",
-             @"/var/db/diagnostics",
-             @"/var/jb/var/mobile/Library/Logs/CrashReporter",
-             @"/var/jb/var/mobile/Library/Logs/Analytics",
-             @"/var/jb/var/mobile/Library/Logs/DiagnosticReports",
-             @"/var/jb/private/var/mobile/Library/Logs/CrashReporter",
-             @"/var/jb/private/var/mobile/Library/Logs/Analytics"];
+    return @[@"/var/mobile/Library/Logs/CrashReporter"];
 }
 
 - (NSArray<NSString *> *)ipsPaths {
     NSMutableArray *paths=[NSMutableArray array];
-    NSFileManager *fm=NSFileManager.defaultManager;
-    for (NSString *root in [self roots]) {
-        BOOL isDirectory=NO;
-        if (![fm fileExistsAtPath:root isDirectory:&isDirectory] || !isDirectory) continue;
-        NSArray *relativePaths=[fm subpathsAtPath:root];
-        for (NSString *relative in relativePaths) {
-            NSString *lower=[relative.lowercaseString copy];
-            if ([lower hasSuffix:@".ips"] || [lower hasSuffix:@".ips.synced"]) {
-                [paths addObject:[root stringByAppendingPathComponent:relative]];
-            }
+    NSFileManager *fm=[NSFileManager defaultManager];
+    NSString *root=@"/var/mobile/Library/Logs/CrashReporter";
+    NSDirectoryEnumerator *enumerator=[fm enumeratorAtPath:root];
+    NSString *relative=nil;
+    while ((relative=[enumerator nextObject])) {
+        NSString *lower=[relative.lowercaseString copy];
+        if ([lower hasSuffix:@".ips"] || [lower hasSuffix:@".ips.synced"]) {
+            [paths addObject:[root stringByAppendingPathComponent:relative]];
         }
     }
     return paths;
