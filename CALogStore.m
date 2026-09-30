@@ -33,7 +33,8 @@ static NSString * const CAUnknown = @"其他";
         if (![fm fileExistsAtPath:root isDirectory:&isDirectory] || !isDirectory) continue;
         NSArray *relativePaths=[fm subpathsAtPath:root];
         for (NSString *relative in relativePaths) {
-            if ([[relative.pathExtension lowercaseString] isEqualToString:@"ips"]) {
+            NSString *lower=[relative.lowercaseString copy];
+            if ([lower hasSuffix:@".ips"] || [lower hasSuffix:@".ips.synced"]) {
                 [paths addObject:[root stringByAppendingPathComponent:relative]];
             }
         }
@@ -47,8 +48,11 @@ static NSString * const CAUnknown = @"其他";
         NSData *data=[NSData dataWithContentsOfFile:path options:0 error:nil];
         if (!data) continue;
         NSDictionary *d=[self parse:data];
-        if (!d) continue;
-        NSMutableDictionary *r=[d mutableCopy];
+        NSMutableDictionary *r=d ? [d mutableCopy] : [NSMutableDictionary dictionary];
+        if (!d) {
+            r[@"bug_type"]=@"unknown";
+            r[@"parseError"]=@YES;
+        }
         r[@"path"]=path;
         r[@"fileName"]=path.lastPathComponent;
         r[@"category"]=[self categoryForReport:r];
@@ -87,6 +91,7 @@ static NSString * const CAUnknown = @"其他";
     return CAUnknown;
 }
 - (NSString *)diagnosisForReport:(NSDictionary *)r {
+    if ([r[@"parseError"] boolValue]) return @"已找到日志文件，但格式暂未解析；请打开原始日志查看。";
     NSString *cat=r[@"category"] ?: [self categoryForReport:r]; NSString *p=r[@"procName"] ?: r[@"app_name"] ?: @"未知进程"; NSDictionary *ex=r[@"exception"]; NSString *x=ex[@"type"] ?: @"未提供异常类型";
     if ([cat isEqualToString:@"崩溃"]) return [NSString stringWithFormat:@"%@ 发生崩溃，异常为 %@。请结合触发线程和 injected images 排查第三方模块。",p,x];
     if ([cat isEqualToString:@"内存"]) return [NSString stringWithFormat:@"%@ 可能因内存压力或 Jetsam 被终止。",p];
