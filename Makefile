@@ -9,7 +9,9 @@ include $(THEOS)/makefiles/common.mk
 BUNDLE_NAME = CrashAnalyzerPrefs
 CrashAnalyzerPrefs_FILES = CAPRootListController.m CALogStore.m CAReportViewController.m
 CrashAnalyzerPrefs_FRAMEWORKS = UIKit Foundation
-CrashAnalyzerPrefs_PRIVATE_FRAMEWORKS = Preferences
+# Preferences.framework is private and is not shipped in the public SDK.
+# Preference classes are resolved by Settings at runtime; do not link it here.
+CrashAnalyzerPrefs_LDFLAGS = -Wl,-undefined,dynamic_lookup
 CrashAnalyzerPrefs_INSTALL_PATH = /Library/PreferenceBundles
 CrashAnalyzerPrefs_CFLAGS = -fobjc-arc
 CrashAnalyzerPrefs_RESOURCE_DIRS = Resources
