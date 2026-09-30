@@ -12,9 +12,8 @@ CrashAnalyzerPrefs_FRAMEWORKS = UIKit Foundation
 # Preferences.framework is private and is not shipped in the public SDK.
 # Preference classes are resolved by Settings at runtime; do not link it here.
 CrashAnalyzerPrefs_LDFLAGS = -Wl,-undefined,dynamic_lookup
-CrashAnalyzerPrefs_INSTALL_PATH = /Library/PreferenceBundles
-CrashAnalyzerPrefs_CFLAGS = -fobjc-arc
 CrashAnalyzerPrefs_RESOURCE_DIRS = Resources
+CrashAnalyzerPrefs_INSTALL_PATH = /Library/PreferenceBundles
 
 include $(THEOS_MAKE_PATH)/bundle.mk
 

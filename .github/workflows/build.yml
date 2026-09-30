@@ -84,7 +84,9 @@ jobs:
           set -e
           for deb in build/*.deb; do
             echo "===== Checking $deb ====="
-            dpkg-deb -c "$deb" | grep -E 'PreferenceBundles/CrashAnalyzerPrefs.bundle|PreferenceLoader/Preferences/CrashAnalyzer.plist'
+            dpkg-deb -c "$deb" | grep -E 'PreferenceBundles/CrashAnalyzerPrefs\.bundle|PreferenceLoader/Preferences/CrashAnalyzerPrefs\.plist'
+            dpkg-deb -e "$deb" /tmp/crash-control
+            grep -q '^Package: com.mowang.crashanalyzer' /tmp/crash-control/control
           done
 
       - name: Upload DEB packages
