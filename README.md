@@ -13,12 +13,14 @@ RootHide-compatible iOS 15–17 analytics log viewer for Settings.
 
 ### Option A: GitHub Actions (recommended)
 
-This repository includes `.github/workflows/build.yml`. Push to `main`, then open **Actions → Build Debian packages**. It builds two rootless packages on macOS:
+This repository includes `.github/workflows/build.yml`, using the proven RootHide Theos setup flow (macOS 14 + RootHide Theos + iPhoneOS 16.5 SDK). Push to `main`, or open **Actions → Build CrashAnalyzer → Run workflow**.
 
-- `CrashAnalyzer-arm64`
-- `CrashAnalyzer-arm64e`
+It produces two arm64e packages for your RootHide setup:
 
-Download them from the workflow's **Artifacts** section. `workflow_dispatch` can also start a build manually.
+- `CrashAnalyzer-arm64e-rootless.deb`
+- `CrashAnalyzer-arm64e-roothide.deb`
+
+Download them from the workflow's **Artifacts** section. For Relaxin RootHide, try the RootHide-scheme package first. The workflow validates that the PreferenceBundle and PreferenceLoader entry are present in each package.
 
 ### Option B: Build with Theos on macOS/Linux
 
