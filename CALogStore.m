@@ -37,6 +37,7 @@ static NSString * const CAUnknown = @"其他";
     return report;
 }
 
+- (NSArray<NSDictionary *> *)reports {
     NSMutableArray *out=[NSMutableArray array];
     for (NSString *path in [self ipsPaths]) {
         NSData *data=[NSData dataWithContentsOfFile:path options:0 error:nil];
