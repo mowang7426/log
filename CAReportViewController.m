@@ -1,11 +1,64 @@
 #import "CAReportViewController.h"
 #import "CALogStore.h"
-#import <Preferences/Preferences.h>
-@implementation CAReportViewController { NSArray *_items; NSString *_category; }
-- (instancetype)initWithSpecifier:(PSSpecifier *)specifier { self=[super initWithStyle:UITableViewStyleInsetGrouped]; if (self) { _specifier=specifier; } return self; }
-- (void)viewDidLoad { [super viewDidLoad]; _category=self.specifier.properties[@"category"] ?: @"其他"; self.title=_category; self.tableView.rowHeight=76; [self reload]; self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemRefresh target:self action:@selector(reload)]; }
-- (void)reload { _items=[[CALogStore sharedStore] reportsForCategory:_category]; [self.tableView reloadData]; }
-- (NSInteger)tableView:(UITableView *)t numberOfRowsInSection:(NSInteger)s { return _items.count; }
-- (UITableViewCell *)tableView:(UITableView *)t cellForRowAtIndexPath:(NSIndexPath *)i { UITableViewCell *c=[t dequeueReusableCellWithIdentifier:@"r"]; if (!c) c=[[UITableViewCell alloc] initWithStyle:UITableViewCellStyleSubtitle reuseIdentifier:@"r"]; NSDictionary *r=_items[i.row]; c.textLabel.text=r[@"procName"] ?: r[@"app_name"] ?: r[@"fileName"]; c.detailTextLabel.text=[NSString stringWithFormat:@"%@ · %@\n%@",r[@"timestamp"] ?: @"时间未知",r[@"bug_type"] ?: _category,r[@"diagnosis"] ?: @""]; c.detailTextLabel.numberOfLines=2; c.accessoryType=UITableViewCellAccessoryDisclosureIndicator; return c; }
-- (void)tableView:(UITableView *)t didSelectRowAtIndexPath:(NSIndexPath *)i { NSDictionary *r=_items[i.row]; NSString *text=[NSString stringWithFormat:@"%@\n\n%@\n\n%@",r[@"fileName"] ?: @"日志",r[@"diagnosis"] ?: @"",r[@"path"] ?: @""]; UIAlertController *a=[UIAlertController alertControllerWithTitle:r[@"procName"] ?: r[@"app_name"] message:text preferredStyle:UIAlertControllerStyleAlert]; [a addAction:[UIAlertAction actionWithTitle:@"关闭" style:UIAlertActionStyleCancel handler:nil]]; [a addAction:[UIAlertAction actionWithTitle:@"分享原始日志" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){ NSString *p=r[@"path"]; if (!p) return; UIActivityViewController *v=[[UIActivityViewController alloc] initWithActivityItems:@[[NSURL fileURLWithPath:p]] applicationActivities:nil]; [self presentViewController:v animated:YES completion:nil]; }]]; [self presentViewController:a animated:YES completion:nil]; [t deselectRowAtIndexPath:i animated:YES]; }
+#import <Preferences/PSSpecifier.h>
+
+@implementation CAReportViewController {
+    NSArray *_items;
+    NSString *_category;
+}
+
+- (instancetype)initWithSpecifier:(PSSpecifier *)specifier {
+    self=[super init];
+    if (self) {
+        _specifier=specifier;
+        _category=[specifier.properties[@"category"] copy] ?: @"其他";
+    }
+    return self;
+}
+
+- (id)specifiers {
+    if (!_specifiers) {
+        [self reloadReports];
+        NSMutableArray *rows=[NSMutableArray array];
+        for (NSDictionary *report in _items) {
+            NSString *name=report[@"procName"] ?: report[@"app_name"] ?: report[@"fileName"] ?: @"未知日志";
+            NSString *detail=report[@"diagnosis"] ?: @"点击查看日志详情";
+            PSSpecifier *row=[PSSpecifier preferenceSpecifierNamed:name target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
+            [row setProperty:detail forKey:@"footerText"];
+            [row setProperty:report forKey:@"report"];
+            [rows addObject:row];
+        }
+        if (!rows.count) {
+            PSSpecifier *empty=[PSSpecifier preferenceSpecifierNamed:@"没有发现此类日志" target:self set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil];
+            [rows addObject:empty];
+        }
+        _specifiers=[rows copy];
+    }
+    return _specifiers;
+}
+
+- (void)reloadReports {
+    _items=[[[CALogStore sharedStore] reportsForCategory:_category] copy];
+}
+
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.title=_category ?: @"分析日志";
+}
+
+- (void)reloadSpecifiers {
+    _specifiers=nil;
+    [self reloadReports];
+    [super reloadSpecifiers];
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    PSSpecifier *specifier=[self specifierAtIndexPath:indexPath];
+    NSDictionary *report=[specifier propertyForKey:@"report"];
+    if (![report isKindOfClass:[NSDictionary class]]) return;
+    NSString *text=[NSString stringWithFormat:@"%@\n\n%@\n\n%@", report[@"fileName"] ?: @"日志", report[@"diagnosis"] ?: @"", report[@"path"] ?: @""];
+    UIAlertController *alert=[UIAlertController alertControllerWithTitle:report[@"procName"] ?: report[@"app_name"] ?: @"日志" message:text preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"关闭" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
 @end

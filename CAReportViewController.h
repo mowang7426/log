@@ -1,6 +1,6 @@
-#import <UIKit/UIKit.h>
+#import <Preferences/PSListController.h>
 @class PSSpecifier;
-@interface CAReportViewController : UITableViewController
+@interface CAReportViewController : PSListController
 @property(nonatomic, retain) PSSpecifier *specifier;
 - (instancetype)initWithSpecifier:(PSSpecifier *)specifier;
 @end
