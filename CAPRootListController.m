@@ -18,8 +18,8 @@
         for (NSString *category in categories) {
             NSUInteger count=0;
             for (NSDictionary *report in reports) if ([report[@"category"] isEqualToString:category]) count++;
-            NSString *title=[NSString stringWithFormat:@"%@    %lu 条", category, (unsigned long)count];
-            PSSpecifier *row=[PSSpecifier preferenceSpecifierNamed:title target:self set:nil get:nil detail:[CAReportViewController class] cell:PSLinkCell edit:nil];
+            PSSpecifier *row=[PSSpecifier preferenceSpecifierNamed:category target:self set:nil get:nil detail:[CAReportViewController class] cell:PSLinkCell edit:nil];
+            [row setProperty:[NSString stringWithFormat:@"%lu 条日志",(unsigned long)count] forKey:@"footerText"];
             [row setProperty:category forKey:@"category"];
             [row setProperty:@YES forKey:@"isController"];
             [items addObject:row];
@@ -32,8 +32,7 @@
         NSString *line=[NSString stringWithFormat:@"%@ · 发现 %@ 个 IPS · 解析 %@ 个", [diagnostics[@"exists"] boolValue] ? @"目录可访问" : @"目录不可访问", diagnostics[@"matched"] ?: @0, diagnostics[@"parsed"] ?: @0];
         [items addObject:[PSSpecifier preferenceSpecifierNamed:line target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
 
-        PSSpecifier *refresh=[PSSpecifier preferenceSpecifierNamed:@"重新扫描" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
-        [refresh setProperty:NSStringFromSelector(@selector(reloadNow:)) forKey:@"action"];
+        PSSpecifier *refresh=[PSSpecifier preferenceSpecifierNamed:@"重新扫描" target:self set:nil get:nil detail:nil cell:PSLinkCell edit:nil];
         [items addObject:refresh];
         _specifiers=[items copy];
     }
@@ -46,5 +45,14 @@
     (void)specifier;
     _specifiers=nil;
     [super reloadSpecifiers];
+}
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    PSSpecifier *specifier=[self specifierAtIndexPath:indexPath];
+    if ([[specifier name] isEqualToString:@"重新扫描"]) {
+        _specifiers=nil;
+        [super reloadSpecifiers];
+    }
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
 }
 @end

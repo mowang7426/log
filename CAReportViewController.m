@@ -56,9 +56,9 @@
             [rows addObject:head];
             for (NSDictionary *r in reports) {
                 NSString *name=r[@"procName"] ?: r[@"app_name"] ?: r[@"fileName"] ?: @"未知日志";
-                PSSpecifier *item=[PSSpecifier preferenceSpecifierNamed:name target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
+                PSSpecifier *item=[PSSpecifier preferenceSpecifierNamed:name target:self set:nil get:nil detail:nil cell:PSLinkCell edit:nil];
                 [item setProperty:r[@"path"] ?: @"" forKey:@"reportPath"];
-                [item setProperty:NSStringFromSelector(@selector(openReport:)) forKey:@"action"];
+                [item setProperty:r[@"category"] ?: @"其他" forKey:@"reportCategory"];
                 [item setProperty:[NSString stringWithFormat:@"%@ · %@",r[@"timestamp"] ?: @"时间未知",r[@"diagnosis"] ?: @"暂无摘要"] forKey:@"footerText"];
                 [rows addObject:item];
             }
@@ -69,6 +69,13 @@
     return _specifiers;
 }
 - (void)viewDidLoad { [super viewDidLoad]; self.title=_singleReport ? (_singleReport[@"procName"] ?: @"日志详情") : (_category ?: @"全部日志"); }
+
+- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
+    PSSpecifier *specifier=[self specifierAtIndexPath:indexPath];
+    NSString *path=[specifier propertyForKey:@"reportPath"];
+    if ([path isKindOfClass:[NSString class]] && path.length) [self openReport:specifier];
+    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+}
 
 - (void)openReport:(PSSpecifier *)specifier {
     NSString *path=[specifier propertyForKey:@"reportPath"];
