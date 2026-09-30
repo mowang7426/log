@@ -6,6 +6,12 @@
 
 @implementation CAPRootListController
 
+- (void)loadView {
+    [super loadView];
+    self.table.tableFooterView=[UIView new];
+    self.view.backgroundColor=[UIColor systemGroupedBackgroundColor];
+}
+
 - (id)specifiers {
     if (!_specifiers) {
         NSMutableArray *items=[NSMutableArray array];
@@ -25,7 +31,7 @@
             PSSpecifier *specifier=[PSSpecifier preferenceSpecifierNamed:entry[0]
                 target:self set:nil get:nil detail:[CAReportViewController class]
                 cell:PSLinkCell edit:nil];
-            [specifier setProperty:entry[1] forKey:@"detail"];
+            [specifier setProperty:entry[1] forKey:@"footerText"];
             [specifier setProperty:entry[0] forKey:@"category"];
             [specifier setProperty:@YES forKey:@"isController"];
             [items addObject:specifier];
