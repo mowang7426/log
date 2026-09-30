@@ -10,7 +10,7 @@
         NSArray *categories=@[@"崩溃", @"内存", @"重启", @"资源", @"其他"];
         for (NSString *category in categories) {
             PSSpecifier *specifier=[PSSpecifier preferenceSpecifierNamed:category
-                target:self set:nil get:nil detail:@"CAReportViewController"
+                target:self set:nil get:nil detail:[CAReportViewController class]
                 cell:PSLinkCell edit:nil];
             [specifier setProperty:category forKey:@"category"];
             [specifier setProperty:@YES forKey:@"isController"];
