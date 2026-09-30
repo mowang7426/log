@@ -58,8 +58,20 @@ static NSString * const CAUnknown = @"其他";
     return out;
 }
 - (NSDictionary *)parse:(NSData *)data {
-    NSString *s=[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding]; if (!s) return nil;
-    NSArray *lines=[s componentsSeparatedByString:@"\n"]; if (lines.count<2) return nil; NSError *e=nil; NSDictionary *head=[NSJSONSerialization JSONObjectWithData:[lines[0] dataUsingEncoding:NSUTF8StringEncoding] options:0 error:&e]; NSDictionary *body=nil; NSMutableString *json=[NSMutableString string]; for (NSUInteger i=1;i<lines.count;i++) [json appendString:lines[i]]; body=[NSJSONSerialization JSONObjectWithData:[json dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil]; if (![body isKindOfClass:NSDictionary.class]) body=@{}; NSMutableDictionary *r=[body mutableCopy]; [r addEntriesFromDictionary:head ?: @{}]; return r;
+    NSString *s=[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    if (!s) return nil;
+    NSArray *lines=[s componentsSeparatedByString:@"\n"];
+    if (!lines.count) return nil;
+    NSMutableDictionary *result=[NSMutableDictionary dictionary];
+    NSDictionary *header=[NSJSONSerialization JSONObjectWithData:[lines[0] dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
+    if ([header isKindOfClass:[NSDictionary class]]) [result addEntriesFromDictionary:header];
+    if (lines.count>1) {
+        NSMutableString *bodyText=[NSMutableString string];
+        for (NSUInteger i=1; i<lines.count; i++) [bodyText appendString:lines[i]];
+        NSDictionary *body=[NSJSONSerialization JSONObjectWithData:[bodyText dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
+        if ([body isKindOfClass:[NSDictionary class]]) [result addEntriesFromDictionary:body];
+    }
+    return result.count ? result : nil;
 }
 - (NSString *)categoryForReport:(NSDictionary *)r {
     NSString *blob=[[r description] lowercaseString]; NSString *bug=[r[@"bug_type"] description];
