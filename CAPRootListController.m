@@ -50,9 +50,11 @@
 - (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
     PSSpecifier *specifier=[self specifierAtIndexPath:indexPath];
     if ([[specifier name] isEqualToString:@"重新扫描"]) {
+        [tableView deselectRowAtIndexPath:indexPath animated:YES];
         _specifiers=nil;
-        [super reloadSpecifiers];
+        [self reloadSpecifiers];
+        return;
     }
-    [tableView deselectRowAtIndexPath:indexPath animated:YES];
+    [super tableView:tableView didSelectRowAtIndexPath:indexPath];
 }
 @end
