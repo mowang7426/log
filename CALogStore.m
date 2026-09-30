@@ -90,11 +90,23 @@ static NSString * const CAUnknown = @"其他";
 }
 
 - (NSString *)categoryForReport:(NSDictionary *)r {
-    NSString *blob=[[r description] lowercaseString]; NSString *bug=[r[@"bug_type"] description];
-    if ([blob containsString:@"jetsam"]||[blob containsString:@"memory pressure"]||[blob containsString:@"memorystatus"]) return @"内存";
-    if ([blob containsString:@"panic"]||[blob containsString:@"unexpected restart"]||[bug isEqualToString:@"210"]) return @"重启";
-    if ([blob containsString:@"watchdog"]||[blob containsString:@"resource"]||[blob containsString:@"cpu"]||[blob containsString:@"thermal"]) return @"资源";
-    if (r[@"exception"]||[bug isEqualToString:@"309"]||[blob containsString:@"crash"]) return @"崩溃";
+    id bugValue=r[@"bug_type"];
+    NSString *bug=[bugValue isKindOfClass:[NSString class]] ? bugValue : [bugValue description];
+    NSDictionary *exception=[r[@"exception"] isKindOfClass:[NSDictionary class]] ? r[@"exception"] : nil;
+    NSString *blob=[[r description] lowercaseString];
+
+    /* Prefer stable IPS fields. Do not search the entire report description:
+       stack strings can contain unrelated words such as "resource" or "cpu". */
+    if ([bug isEqualToString:@"309"] || exception != nil || r[@"exceptionType"] || r[@"faultingThread"])
+        return @"崩溃";
+    if ([bug isEqualToString:@"298"] || [blob containsString:@"jetsam event"] || r[@"largestProcess"])
+        return @"内存";
+    if ([bug isEqualToString:@"210"] || r[@"panicString"] || [blob containsString:@"panic-full"])
+        return @"重启";
+    if (r[@"watchdogTimeout"] || [blob containsString:@"watchdog timeout"] || [blob containsString:@"resource_exception"])
+        return @"资源";
+    if ([r[@"procName"] isKindOfClass:[NSString class]] || [r[@"app_name"] isKindOfClass:[NSString class]])
+        return @"崩溃";
     return CAUnknown;
 }
 - (NSString *)diagnosisForReport:(NSDictionary *)r {
@@ -107,9 +119,12 @@ static NSString * const CAUnknown = @"其他";
     return @"暂未识别日志类型，请查看原始内容。";
 }
 - (NSArray<NSDictionary *> *)reportsForCategory:(NSString *)category {
+    NSArray *all=[self reports];
+    if (![category isKindOfClass:[NSString class]] || category.length==0) return all;
     NSMutableArray *matches=[NSMutableArray array];
-    for (NSDictionary *report in [self reports]) {
-        if ([report[@"category"] isEqualToString:category]) [matches addObject:report];
+    for (NSDictionary *report in all) {
+        NSString *value=report[@"category"];
+        if ([value isEqualToString:category]) [matches addObject:report];
     }
     return matches;
 }

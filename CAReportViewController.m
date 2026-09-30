@@ -11,7 +11,9 @@
     self=[super init];
     if (self) {
         self.specifier=specifier;
-        _category=[specifier.properties[@"category"] copy] ?: @"其他";
+        NSString *category=[specifier propertyForKey:@"category"];
+        if (![category isKindOfClass:[NSString class]]) category=specifier.name;
+        _category=[category copy] ?: @"其他";
     }
     return self;
 }
