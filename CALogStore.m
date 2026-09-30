@@ -22,7 +22,7 @@ static NSString * const CAUnknown = @"其他";
              @"/var/jb/var/mobile/Library/Logs/Analytics",
              @"/var/jb/var/mobile/Library/Logs/DiagnosticReports",
              @"/var/jb/private/var/mobile/Library/Logs/CrashReporter",
-             @"/var/jb/private/var/mobile/Library/Logs/Analytics";
+             @"/var/jb/private/var/mobile/Library/Logs/Analytics"];
 }
 
 - (NSArray<NSString *> *)ipsPaths {
