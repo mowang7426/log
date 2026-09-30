@@ -10,8 +10,12 @@ static NSString * const CAUnknown = @"其他";
              @"/var/mobile/Library/Logs/Analytics",
              @"/var/mobile/Library/Logs/DiagnosticReports",
              @"/var/mobile/Library/Logs/CrashReporter/DiagnosticLogs",
+             @"/var/mobile/Library/Logs/CrashReporter/Retired",
+             @"/var/mobile/Library/Logs/CrashReporter/Legacy",
              @"/private/var/mobile/Library/Logs/CrashReporter",
+             @"/private/var/mobile/Library/Logs/CrashReporter/DiagnosticLogs",
              @"/private/var/mobile/Library/Logs/Analytics",
+             @"/private/var/mobile/Library/Logs/Analytics/DiagnosticLogs",
              @"/private/var/mobile/Library/Logs/DiagnosticReports",
              @"/var/db/diagnostics"];
 }
@@ -22,9 +26,8 @@ static NSString * const CAUnknown = @"其他";
     for (NSString *root in [self roots]) {
         BOOL isDirectory=NO;
         if (![fm fileExistsAtPath:root isDirectory:&isDirectory] || !isDirectory) continue;
-        NSDirectoryEnumerator *enumerator=[fm enumeratorAtPath:root];
-        NSString *relative=nil;
-        while ((relative=[enumerator nextObject])) {
+        NSArray *relativePaths=[fm subpathsAtPath:root];
+        for (NSString *relative in relativePaths) {
             if ([[relative.pathExtension lowercaseString] isEqualToString:@"ips"]) {
                 [paths addObject:[root stringByAppendingPathComponent:relative]];
             }
