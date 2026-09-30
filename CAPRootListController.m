@@ -62,6 +62,11 @@
                 target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil];
             [items addObject:row];
         }
+        PSSpecifier *scanButton=[PSSpecifier preferenceSpecifierNamed:@"立即扫描日志"
+            target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
+        [scanButton setProperty:@"手动重新扫描系统 CrashReporter 目录" forKey:@"footerText"];
+        [scanButton setProperty:NSStringFromSelector(@selector(scanNow)) forKey:@"action"];
+        [items addObject:scanButton];
         _specifiers=[items copy];
     }
     return _specifiers;
@@ -77,7 +82,17 @@
     [self reloadSpecifiers];
 }
 
-- (void)reloadSpecifiers {
+- (void)scanNow {
+    NSDictionary *d=[[CALogStore sharedStore] scanDiagnostics];
+    NSString *message=[NSString stringWithFormat:@"路径：%@\n目录：%@\n枚举文件：%@\nIPS 文件：%@\n可读取：%@\n解析成功：%@", d[@"path"] ?: @"未知", [d[@"exists"] boolValue] ? @"可见" : @"不存在或不可访问", d[@"enumerated"] ?: @0, d[@"matched"] ?: @0, d[@"readable"] ?: @0, d[@"parsed"] ?: @0];
+    UIAlertController *alert=[UIAlertController alertControllerWithTitle:@"扫描完成" message:message preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"确定" style:UIAlertActionStyleDefault handler:^(UIAlertAction *action){
+        self->_specifiers=nil;
+        [super reloadSpecifiers];
+    }]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
     _specifiers=nil;
     [super reloadSpecifiers];
 }
