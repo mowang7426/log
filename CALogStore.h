@@ -2,12 +2,23 @@
 
 // Third-generation user-facing analysis label. Local-only; no network implication.
 FOUNDATION_EXPORT NSString * const CAAnalysisVersionTitle;
+FOUNDATION_EXPORT NSString * const CALogStoreDidRefreshNotification;
 
-@interface CALogStore : NSObject
+@interface CALogStore : NSObject {
+    NSArray *_reportsSnapshot;
+    NSDictionary *_diagnosticsSnapshot;
+    NSObject *_analysisLock;
+    BOOL _scanInProgress;
+    BOOL _reportsReady;
+}
 // JSON: title/reason/confidence/status strings, evidence/actions string arrays.
 // Describes observed event separately from possible causes; never confirms a root cause.
 - (NSDictionary *)humanReadableAnalysisForReport:(NSDictionary *)report;
 + (instancetype)sharedStore;
+// Nonblocking immutable snapshots; initially empty. Notifications arrive on main.
+- (BOOL)reportsReady;
+- (BOOL)scanInProgress;
+- (void)refreshReports;
 - (NSArray<NSDictionary *> *)reports;
 - (NSDictionary *)reportAtPath:(NSString *)path;
 - (NSArray<NSDictionary *> *)reportsForCategory:(NSString *)category;

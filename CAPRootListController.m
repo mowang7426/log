@@ -38,7 +38,7 @@
         PSSpecifier *status=[PSSpecifier preferenceSpecifierNamed:@"扫描状态" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
         [status setProperty:@"CrashReporter 目录与解析器状态" forKey:@"footerText"];
         [items addObject:status];
-        NSString *line=[NSString stringWithFormat:@"%@ · 发现 %@ 个 IPS · 解析 %@ 个", [diagnostics[@"exists"] boolValue] ? @"目录可访问" : @"目录不可访问", diagnostics[@"matched"] ?: @0, diagnostics[@"parsed"] ?: @0];
+        NSString *line=[[CALogStore sharedStore] reportsReady] ? [NSString stringWithFormat:@"%@ · 发现 %@ 个 IPS · 解析 %@ 个", [diagnostics[@"exists"] boolValue] ? @"目录可访问" : @"目录不可访问", diagnostics[@"matched"] ?: @0, diagnostics[@"parsed"] ?: @0] : @"正在后台扫描日志…";
         [items addObject:[PSSpecifier preferenceSpecifierNamed:line target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
 
         [items addObject:[PSSpecifier preferenceSpecifierNamed:@"工具与设置" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
@@ -49,8 +49,8 @@
         [items addObject:ai];
 
         [items addObject:[PSSpecifier preferenceSpecifierNamed:@"AI 分析历史" target:nil set:nil get:nil detail:[CAHistoryController class] cell:PSLinkCell edit:nil]];
-        PSSpecifier *about=[PSSpecifier preferenceSpecifierNamed:@"关于 · CrashAnalyzer 1.1.1" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
-        [about setProperty:@"第四版诊断工作台 · Build 9\nAuthor / Maintainer: MoWang\n已加载模块不是已证实根因；实测案例只是用户记录。" forKey:@"footerText"]; [items addObject:about];
+        PSSpecifier *about=[PSSpecifier preferenceSpecifierNamed:@"关于 · CrashAnalyzer 1.1.2" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
+        [about setProperty:@"第四版诊断工作台 · Build 10\nAuthor / Maintainer: MoWang\n已加载模块不是已证实根因；实测案例只是用户记录。" forKey:@"footerText"]; [items addObject:about];
         PSSpecifier *refresh=[PSSpecifier preferenceSpecifierNamed:@"重新扫描" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
         refresh.buttonAction=@selector(reloadNow:);
         [items addObject:refresh];
@@ -59,12 +59,13 @@
     return _specifiers;
 }
 
-- (void)viewDidLoad { [super viewDidLoad]; self.title=@"分析日志"; }
-- (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; [_specifiers release]; _specifiers=nil; [self reloadSpecifiers]; }
+- (void)viewDidLoad { [super viewDidLoad]; self.title=@"分析日志"; [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(logStoreDidRefresh:) name:CALogStoreDidRefreshNotification object:[CALogStore sharedStore]]; if (![[CALogStore sharedStore] reportsReady]) [[CALogStore sharedStore] refreshReports]; }
+- (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; if (!_specifiers) [self reloadSpecifiers]; if (![[CALogStore sharedStore] reportsReady]) [[CALogStore sharedStore] refreshReports]; }
+- (void)logStoreDidRefresh:(NSNotification *)note { (void)note; [_specifiers release]; _specifiers=nil; if (self.viewIfLoaded.window) [self reloadSpecifiers]; }
+- (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; [super dealloc]; }
 - (void)reloadNow:(PSSpecifier *)specifier {
     (void)specifier;
-    [_specifiers release]; _specifiers=nil;
-    [self reloadSpecifiers];
+    [[CALogStore sharedStore] refreshReports];
 }
 
 @end

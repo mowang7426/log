@@ -54,10 +54,16 @@ static BOOL CAValidCache(NSDictionary *cache, NSString *fingerprint) {
         [cache[@"rootCause"] isKindOfClass:[NSString class]] && CAStringArray(cache[@"recommendations"]);
 }
 
+NSString * const CALogStoreDidRefreshNotification = @"CALogStoreDidRefreshNotification";
 NSString * const CAAnalysisVersionTitle = @"本地智能分析 · 第三版";
 static NSString * const CAUnknown = @"其他";
 
+@interface CALogStore ()
+- (NSArray *)scanReportsWithDiagnostics:(NSDictionary **)diagnostics;
+@end
+
 @implementation CALogStore
+- (instancetype)init { self=[super init]; if (self) _analysisLock=[NSObject new]; return self; }
 + (instancetype)sharedStore { static CALogStore *s; static dispatch_once_t once; dispatch_once(&once, ^{ s=[self new]; }); return s; }
 
 - (NSArray<NSString *> *)roots {
@@ -112,6 +118,7 @@ static NSString * const CAUnknown = @"其他";
 
 - (NSDictionary *)reportAtPath:(NSString *)path {
     if (![path isKindOfClass:[NSString class]] || !path.length) return nil;
+    for (NSDictionary *report in [self reports]) if ([report[@"path"] isEqual:path]) return report;
     NSData *data=[NSData dataWithContentsOfFile:path options:0 error:nil];
     if (!data) return nil;
     NSDictionary *parsed=[self parse:data];
@@ -124,23 +131,69 @@ static NSString * const CAUnknown = @"其他";
     return report;
 }
 
+- (BOOL)reportsReady { @synchronized(self) { return _reportsReady; } }
+- (BOOL)scanInProgress { @synchronized(self) { return _scanInProgress; } }
 - (NSArray<NSDictionary *> *)reports {
-    NSMutableArray *out=[NSMutableArray array];
-    for (NSString *path in [self ipsPaths]) {
-        NSData *data=[NSData dataWithContentsOfFile:path options:0 error:nil];
-        if (!data) continue;
-        NSDictionary *d=[self parse:data];
-        NSMutableDictionary *r=d ? [[[self normalizedReport:d] mutableCopy] autorelease] : [NSMutableDictionary dictionary];
-        if (!d) {
-            r[@"bug_type"]=@"unknown";
-            r[@"parseError"]=@YES;
+    @synchronized(self) { return _reportsSnapshot ? [[_reportsSnapshot retain] autorelease] : @[]; }
+}
+- (void)dealloc {
+    [_reportsSnapshot release]; [_diagnosticsSnapshot release]; [_analysisLock release]; [super dealloc];
+}
+- (void)refreshReports {
+    // Coalesce taps and concurrent controllers. No lock is held during disk I/O,
+    // dispatch, or notification delivery. Copied dispatch blocks retain self in MRC.
+    @synchronized(self) { if (_scanInProgress) return; _scanInProgress=YES; }
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT,0), ^{
+        @autoreleasepool {
+            NSDictionary *diagnostics=nil;
+            NSArray *reports=[self scanReportsWithDiagnostics:&diagnostics];
+            @synchronized(self) {
+                [_reportsSnapshot release]; _reportsSnapshot=[reports copy];
+                [_diagnosticsSnapshot release]; _diagnosticsSnapshot=[diagnostics copy];
+                _reportsReady=YES; _scanInProgress=NO;
+            }
+            dispatch_async(dispatch_get_main_queue(), ^{
+                [[NSNotificationCenter defaultCenter] postNotificationName:CALogStoreDidRefreshNotification object:self];
+            });
         }
-        r[@"path"]=path;
-        r[@"fileName"]=path.lastPathComponent;
-        r[@"category"]=[self categoryForReport:r];
-        r[@"diagnosis"]=[self diagnosisForReport:r];
-        [out addObject:r];
+    });
+}
+- (NSArray *)scanReportsWithDiagnostics:(NSDictionary **)diagnostics {
+    NSMutableArray *out=[NSMutableArray array];
+    NSFileManager *fm=[[[NSFileManager alloc] init] autorelease];
+    NSString *root=[[self roots] firstObject];
+    BOOL isDirectory=NO;
+    BOOL exists=[fm fileExistsAtPath:root isDirectory:&isDirectory];
+    NSError *lastError=nil;
+    NSUInteger enumerated=0, matched=0, readable=0, parsed=0;
+    NSDirectoryEnumerator *enumerator=exists && isDirectory ? [fm enumeratorAtPath:root] : nil;
+    NSString *relative=nil;
+    while ((relative=[enumerator nextObject])) {
+        enumerated++;
+        NSString *lower=relative.lowercaseString;
+        if (![lower hasSuffix:@".ips"] && ![lower hasSuffix:@".ips.synced"]) continue;
+        matched++;
+        @autoreleasepool {
+            NSString *path=[root stringByAppendingPathComponent:relative];
+            NSError *error=nil;
+            NSData *data=[NSData dataWithContentsOfFile:path options:0 error:&error];
+            if (!data) { [lastError release]; lastError=[error retain]; continue; }
+            readable++;
+            NSDictionary *d=[self parse:data];
+            if (d) parsed++;
+            NSMutableDictionary *r=d ? [[[self normalizedReport:d] mutableCopy] autorelease] : [NSMutableDictionary dictionary];
+            if (!d) { r[@"bug_type"]=@"unknown"; r[@"parseError"]=@YES; }
+            r[@"path"]=path;
+            r[@"fileName"]=path.lastPathComponent;
+            r[@"category"]=[self categoryForReport:r];
+            r[@"diagnosis"]=[self diagnosisForReport:r];
+            [out addObject:[[r copy] autorelease]];
+        }
     }
+    if (diagnostics) *diagnostics=@{@"path":root, @"exists":@(exists), @"isDirectory":@(isDirectory),
+        @"enumerated":@(enumerated), @"matched":@(matched), @"readable":@(readable), @"parsed":@(parsed),
+        @"error":lastError.localizedDescription ?: @""};
+    [lastError release];
     [out sortUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
         NSString *ta=[a[@"timestamp"] description] ?: @"";
         NSString *tb=[b[@"timestamp"] description] ?: @"";
@@ -165,28 +218,9 @@ static NSString * const CAUnknown = @"其他";
     return result.count ? result : nil;
 }
 - (NSDictionary *)scanDiagnostics {
-    NSString *root=@"/var/mobile/Library/Logs/CrashReporter";
-    NSFileManager *fm=[NSFileManager defaultManager];
-    BOOL isDirectory=NO;
-    BOOL exists=[fm fileExistsAtPath:root isDirectory:&isDirectory];
-    NSError *error=nil;
-    NSDirectoryEnumerator *enumerator=exists && isDirectory ? [fm enumeratorAtPath:root] : nil;
-    NSUInteger enumerated=0, matched=0, readable=0, parsed=0;
-    NSString *relative=nil;
-    while ((relative=[enumerator nextObject])) {
-        enumerated++;
-        NSString *lower=relative.lowercaseString;
-        if (![lower hasSuffix:@".ips"] && ![lower hasSuffix:@".ips.synced"]) continue;
-        matched++;
-        NSString *path=[root stringByAppendingPathComponent:relative];
-        NSData *data=[NSData dataWithContentsOfFile:path options:0 error:&error];
-        if (!data) continue;
-        readable++;
-        if ([self parse:data]) parsed++;
+    @synchronized(self) {
+        return _diagnosticsSnapshot ? [[_diagnosticsSnapshot retain] autorelease] : @{@"exists":@NO, @"isDirectory":@NO, @"matched":@0, @"parsed":@0, @"enumerated":@0, @"readable":@0, @"error":@"尚未扫描"};
     }
-    return @{@"path":root, @"exists":@(exists), @"isDirectory":@(isDirectory),
-             @"enumerated":@(enumerated), @"matched":@(matched), @"readable":@(readable),
-             @"parsed":@(parsed), @"error":error.localizedDescription ?: @""};
 }
 
 - (NSString *)categoryForReport:(NSDictionary *)r {
@@ -247,7 +281,7 @@ static NSString * const CAUnknown = @"其他";
 
 - (NSDictionary *)analysisCacheForFingerprint:(NSString *)fingerprint {
     if (!CAValidFingerprint(fingerprint)) return nil;
-    @synchronized (self) {
+    @synchronized (_analysisLock) {
         NSString *path=[[self analysisCacheDirectory] stringByAppendingPathComponent:[fingerprint stringByAppendingString:@".json"]];
         NSData *data=[NSData dataWithContentsOfFile:path options:0 error:nil];
         if (!data) return nil;
@@ -258,7 +292,7 @@ static NSString * const CAUnknown = @"其他";
 
 - (BOOL)saveAnalysisCache:(NSDictionary *)cache forFingerprint:(NSString *)fingerprint {
     if (!CAValidFingerprint(fingerprint) || ![cache isKindOfClass:[NSDictionary class]]) return NO;
-    @synchronized (self) {
+    @synchronized (_analysisLock) {
         NSMutableDictionary *entry=[[[self analysisCacheForFingerprint:fingerprint] mutableCopy] autorelease];
         if (!entry) {
             NSDateFormatter *format=[NSDateFormatter new];

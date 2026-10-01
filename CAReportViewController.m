@@ -51,6 +51,7 @@ static PSSpecifier *CAShortRow(NSString *text) {
             for (NSDictionary *r in reports) {
                 NSString *name=r[@"fileName"] ?: r[@"procName"] ?: r[@"app_name"] ?: @"未知日志";
                 PSSpecifier *item=[PSSpecifier preferenceSpecifierNamed:name target:nil set:nil get:nil detail:[CAReportDetailController class] cell:PSLinkCell edit:nil];
+                [item setProperty:r forKey:@"reportSnapshot"];
                 [item setProperty:r[@"path"] ?: @"" forKey:@"reportPath"];
                 [item setProperty:r[@"category"] ?: @"其他" forKey:@"reportCategory"];
                 [item setProperty:[NSString stringWithFormat:@"%@ · %@",r[@"timestamp"] ?: @"时间未知",r[@"diagnosis"] ?: @"暂无摘要"] forKey:@"footerText"];
@@ -82,14 +83,41 @@ static PSSpecifier *CAShortRow(NSString *text) {
 
 @implementation CAReportDetailController {
     NSDictionary *_report;
+    NSDictionary *_match;
+    NSDictionary *_human;
+    NSString *_matchStatus;
+    BOOL _loading;
+    BOOL _loaded;
 }
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
-    [_report release]; _report=nil;
-    [_specifiers release]; _specifiers=nil;
-    [self reloadSpecifiers];
+    // specifiers are immutable for this controller lifetime; returning must not reread the IPS file.
 }
-- (void)dealloc { [_report release]; [super dealloc]; }
+- (void)dealloc { [_report release]; [_match release]; [_human release]; [_matchStatus release]; [super dealloc]; }
+- (void)loadReport {
+    if (_loading || _loaded) return;
+    _loading=YES;
+    NSString *path=[self.specifier propertyForKey:@"reportPath"];
+    NSDictionary *snapshot=[self.specifier propertyForKey:@"reportSnapshot"];
+    // GCD copies both blocks; their captured objects (including self) survive under MRC.
+    dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT,0), ^{
+        @autoreleasepool {
+            NSDictionary *report=snapshot ?: [[CALogStore sharedStore] reportAtPath:path];
+            CACaseStore *cases=[CACaseStore sharedStore];
+            NSDictionary *match=report ? [cases matchingCaseForReport:report] : nil;
+            NSDictionary *human=report ? [[CALogStore sharedStore] humanReadableAnalysisForReport:report] : nil;
+            NSString *status=![cases settingEnabled:CAUseHistoricalCases] ? @"历史案例检索已关闭" :
+                (![CACaseStore evidenceForReport:report] ? @"证据不足，未检索历史案例" :
+                (match ? ([match[@"confirmed"] boolValue] ? @"匹配到有用户实测记录的历史 AI 参考（不保证本次根因）" : @"匹配到未验证 AI 参考（已关闭仅实测限制）") : @"没有符合当前采用设置的精确历史案例"));
+            dispatch_async(dispatch_get_main_queue(), ^{
+                _report=[report retain]; _match=[match retain]; _human=[human retain]; _matchStatus=[status copy];
+                _loaded=YES; _loading=NO;
+                [_specifiers release]; _specifiers=nil;
+                if (self.viewIfLoaded.window) [self reloadSpecifiers];
+            });
+        }
+    });
+}
 - (instancetype)initWithSpecifier:(PSSpecifier *)specifier {
     self=[super init];
     if (self) self.specifier=specifier;
@@ -97,8 +125,12 @@ static PSSpecifier *CAShortRow(NSString *text) {
 }
 - (id)specifiers {
     if (!_specifiers) {
+        if (!_loaded) {
+            _specifiers=[[NSMutableArray alloc] initWithObjects:CAShortRow(@"正在加载本地分析…"),nil];
+            [self loadReport];
+            return _specifiers;
+        }
         NSString *path=[self.specifier propertyForKey:@"reportPath"];
-        _report=[[[CALogStore sharedStore] reportAtPath:path] retain];
         if (!_report) {
             self.title=@"日志读取失败";
             NSString *message=([path isKindOfClass:[NSString class]] && path.length)
@@ -110,12 +142,9 @@ static PSSpecifier *CAShortRow(NSString *text) {
         self.title=_report[@"procName"] ?: _report[@"app_name"] ?: @"日志详情";
         NSMutableArray *rows=[NSMutableArray array];
         NSDictionary *r=_report;
-        CACaseStore *cases=[CACaseStore sharedStore];
-        NSDictionary *match=[cases matchingCaseForReport:r];
-        NSString *matchStatus=![cases settingEnabled:CAUseHistoricalCases] ? @"历史案例检索已关闭" :
-            (![CACaseStore evidenceForReport:r] ? @"证据不足，未检索历史案例" :
-            (match ? ([match[@"confirmed"] boolValue] ? @"匹配到有用户实测记录的历史 AI 参考（不保证本次根因）" : @"匹配到未验证 AI 参考（已关闭仅实测限制）") : @"没有符合当前采用设置的精确历史案例"));
-        NSDictionary *human=[[CALogStore sharedStore] humanReadableAnalysisForReport:r];
+        NSDictionary *match=_match;
+        NSString *matchStatus=_matchStatus;
+        NSDictionary *human=_human;
         PSSpecifier *version=[PSSpecifier preferenceSpecifierNamed:@"本地分析" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
         [version setProperty:@"仅依据本地日志字段生成；不触发网络，根因仍需核对。" forKey:@"footerText"]; [rows addObject:version];
         NSArray *readableGroups=@[@[@"为什么会退出",@[human[@"title"],human[@"reason"]]], @[@"判断依据",human[@"evidence"]], @[@"建议处理",human[@"actions"]], @[@"结论状态",@[human[@"confidence"]]]];
