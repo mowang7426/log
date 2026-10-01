@@ -205,29 +205,3 @@
     [self presentViewController:vc animated:YES completion:nil];
 }
 @end
-
-@implementation CAAnalysisController
-- (instancetype)initWithSpecifier:(PSSpecifier *)specifier {
-    self=[super init];
-    if (self) self.specifier=specifier;
-    return self;
-}
-- (id)specifiers {
-    if (!_specifiers) {
-        NSString *text=[self.specifier propertyForKey:@"analysisText"] ?: @"暂无分析结论";
-        PSSpecifier *open=[PSSpecifier preferenceSpecifierNamed:@"查看完整分析结论" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
-        [open setProperty:text forKey:@"analysisText"];
-        open.buttonAction=@selector(showAnalysis:);
-        _specifiers=[NSMutableArray arrayWithObject:open];
-        self.title=@"完整分析结论";
-    }
-    return _specifiers;
-}
-- (void)showAnalysis:(PSSpecifier *)specifier {
-    NSString *text=[specifier propertyForKey:@"analysisText"] ?: @"暂无分析结论";
-    UIAlertController *alert=[UIAlertController alertControllerWithTitle:@"完整分析结论" message:text preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"复制" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a){ [UIPasteboard generalPasteboard].string=text; }]];
-    [alert addAction:[UIAlertAction actionWithTitle:@"关闭" style:UIAlertActionStyleCancel handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
-}
-@end
