@@ -1,4 +1,5 @@
 #import "CAReportViewController.h"
+#import "CAAI.h"
 #import "CALogStore.h"
 #import <Preferences/PSSpecifier.h>
 #import <Preferences/PSTableCell.h>
@@ -95,6 +96,9 @@
         [analysis setProperty:diagnosis forKey:@"analysisText"];
         analysis.buttonAction=@selector(showAnalysis:);
         [rows addObject:analysis];
+        PSSpecifier *ai=[PSSpecifier preferenceSpecifierNamed:@"AI 分析此日志" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
+        ai.buttonAction=@selector(analyzeWithAI:);
+        [rows addObject:ai];
         [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"崩溃现场" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
         NSArray *scene=@[
             @[@"触发方式",r[@"normalizedExceptionType"] ?: @"未知"],
@@ -158,6 +162,22 @@
     [alert addAction:[UIAlertAction actionWithTitle:@"复制" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a){ [UIPasteboard generalPasteboard].string=text; }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"关闭" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
+}
+- (void)analyzeWithAI:(PSSpecifier *)specifier {
+    (void)specifier;
+    UIAlertController *loading=[UIAlertController alertControllerWithTitle:@"AI 分析中" message:@"正在发送日志并等待模型响应，请稍候…" preferredStyle:UIAlertControllerStyleAlert];
+    [self presentViewController:loading animated:YES completion:nil];
+    BOOL include=[[NSUserDefaults standardUserDefaults] boolForKey:@"CAAIIncludeSource"];
+    [[CAAIService shared] analyzeReport:_report includeSource:include completion:^(NSString *result,NSError *error){
+        [loading dismissViewControllerAnimated:YES completion:^{
+            NSString *title=error ? @"AI 分析失败" : @"AI 分析结果";
+            NSString *text=error.localizedDescription ?: result ?: @"模型没有返回结果。";
+            UIAlertController *alert=[UIAlertController alertControllerWithTitle:title message:text preferredStyle:UIAlertControllerStyleAlert];
+            if (!error) [alert addAction:[UIAlertAction actionWithTitle:@"复制" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a){ [UIPasteboard generalPasteboard].string=text; }]];
+            [alert addAction:[UIAlertAction actionWithTitle:@"关闭" style:UIAlertActionStyleCancel handler:nil]];
+            [self presentViewController:alert animated:YES completion:nil];
+        }];
+    }];
 }
 - (void)viewDidLoad { [super viewDidLoad]; self.title=_report[@"procName"] ?: _report[@"app_name"] ?: @"日志详情"; }
 @end
