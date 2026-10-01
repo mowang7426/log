@@ -55,6 +55,7 @@ static NSString * const CAUnknown = @"其他";
     return r;
 }
 
+- (NSDictionary *)reportAtPath:(NSString *)path {
     if (![path isKindOfClass:[NSString class]] || !path.length) return nil;
     NSData *data=[NSData dataWithContentsOfFile:path options:0 error:nil];
     if (!data) return nil;
