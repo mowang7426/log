@@ -110,10 +110,19 @@
             @[@"诊断",r[@"diagnosis"] ?: @"暂无诊断"],
             @[@"文件",r[@"fileName"] ?: @"未知"]
         ];
-                PSSpecifier *source=[PSSpecifier preferenceSpecifierNamed:@"查看源文件" target:nil set:nil get:nil detail:[CAReportSourceController class] cell:PSLinkCell edit:nil];
-                [source setProperty:r[@"path"] ?: @"" forKey:@"reportPath"];
-                [rows addObject:source];
-                for (NSArray *f in fields) [rows addObject:[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"%@：%@",f[0],f[1]] target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
+        for (NSArray *f in fields) {
+            NSString *label=f[0]; NSString *value=f[1];
+            if ([label isEqualToString:@"诊断"] && value.length>42) {
+                for (NSUInteger i=0; i<value.length; i+=42) {
+                    NSUInteger n=MIN((NSUInteger)42,value.length-i);
+                    NSString *part=[value substringWithRange:NSMakeRange(i,n)];
+                    NSString *line=i==0 ? [NSString stringWithFormat:@"诊断：%@",part] : [NSString stringWithFormat:@"       %@",part];
+                    [rows addObject:[PSSpecifier preferenceSpecifierNamed:line target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
+                }
+            } else {
+                [rows addObject:[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"%@：%@",label,value] target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
+            }
+        }
         _specifiers=[rows mutableCopy];
     }
     return _specifiers;
@@ -121,51 +130,54 @@
 - (void)viewDidLoad { [super viewDidLoad]; self.title=_report[@"procName"] ?: _report[@"app_name"] ?: @"日志详情"; }
 @end
 
-@interface CAReportSourceController () <UITextViewDelegate>
+@interface CAReportSourceController ()
 @property(nonatomic,strong) NSString *sourcePath;
-@property(nonatomic,strong) UITextView *textView;
+@property(nonatomic,strong) NSString *sourceText;
 @end
 @implementation CAReportSourceController
+- (void)setSpecifier:(PSSpecifier *)specifier {
+    [super setSpecifier:specifier];
+    _specifiers=nil;
+    _sourcePath=[[specifier propertyForKey:@"reportPath"] copy];
+    NSData *data=[NSData dataWithContentsOfFile:_sourcePath options:0 error:nil];
+    _sourceText=data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : @"无法读取源文件。请确认文件仍存在且具有访问权限。";
+    self.title=_sourcePath.lastPathComponent ?: @"源文件";
+}
 - (instancetype)initWithSpecifier:(PSSpecifier *)specifier {
     self=[super init];
-    if (self) {
-        self.specifier=specifier;
-        _sourcePath=[[specifier propertyForKey:@"reportPath"] copy];
-        self.title=_sourcePath.lastPathComponent ?: @"源文件";
-    }
+    if (self) self.specifier=specifier;
     return self;
 }
-- (id)specifiers { return [NSMutableArray array]; }
-- (void)viewDidLoad {
-    [super viewDidLoad];
-    self.view.backgroundColor=[UIColor systemBackgroundColor];
-    self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAction target:self action:@selector(shareSource)];
-    self.navigationItem.leftBarButtonItem=[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemEdit target:self action:@selector(copySource)];
-    _textView=[[UITextView alloc] initWithFrame:self.view.bounds];
-    _textView.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;
-    _textView.editable=NO;
-    _textView.selectable=YES;
-    _textView.font=[UIFont monospacedSystemFontOfSize:12 weight:UIFontWeightRegular];
-    _textView.backgroundColor=[UIColor systemBackgroundColor];
-    [self.view addSubview:_textView];
-    NSData *data=[NSData dataWithContentsOfFile:_sourcePath options:0 error:nil];
-    NSString *text=data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : nil;
-    _textView.text=text ?: @"无法读取源文件。请确认文件仍存在且插件具有访问权限。";
+- (id)specifiers {
+    if (!_specifiers) {
+        NSMutableArray *rows=[NSMutableArray array];
+        PSSpecifier *copy=[PSSpecifier preferenceSpecifierNamed:@"复制全部源文件" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
+        copy.buttonAction=@selector(copySource);
+        [rows addObject:copy];
+        PSSpecifier *share=[PSSpecifier preferenceSpecifierNamed:@"分享源文件" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
+        share.buttonAction=@selector(shareSource);
+        [rows addObject:share];
+        NSString *text=_sourceText ?: @"源文件路径未传入";
+        const NSUInteger chunk=120;
+        for (NSUInteger i=0; i<text.length; i+=chunk) {
+            NSUInteger n=MIN(chunk,text.length-i);
+            NSString *part=[text substringWithRange:NSMakeRange(i,n)];
+            PSSpecifier *line=[PSSpecifier preferenceSpecifierNamed:part target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil];
+            [line setProperty:@YES forKey:@"multilineTitle"];
+            [rows addObject:line];
+        }
+        _specifiers=rows;
+    }
+    return _specifiers;
 }
-- (void)copySource {
-    [UIPasteboard generalPasteboard].string=_textView.text ?: @"";
-    UIAlertController *a=[UIAlertController alertControllerWithTitle:@"已复制" message:@"源文件内容已复制到剪贴板。" preferredStyle:UIAlertControllerStyleAlert];
-    [a addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
-    [self presentViewController:a animated:YES completion:nil];
-}
+- (void)viewDidLoad { [super viewDidLoad]; self.title=_sourcePath.lastPathComponent ?: @"源文件"; }
+- (void)copySource { [UIPasteboard generalPasteboard].string=_sourceText ?: @""; }
 - (void)shareSource {
     if (!_sourcePath.length) return;
-    NSString *name=_sourcePath.lastPathComponent ?: @"report.ips";
-    NSString *sharePath=[NSTemporaryDirectory() stringByAppendingPathComponent:name];
-    [[NSFileManager defaultManager] removeItemAtPath:sharePath error:nil];
-    if (![[NSFileManager defaultManager] copyItemAtPath:_sourcePath toPath:sharePath error:nil]) return;
-    NSURL *url=[NSURL fileURLWithPath:sharePath];
-    UIActivityViewController *vc=[[UIActivityViewController alloc] initWithActivityItems:@[url] applicationActivities:nil];
+    NSString *dst=[NSTemporaryDirectory() stringByAppendingPathComponent:_sourcePath.lastPathComponent ?: @"report.ips"];
+    [[NSFileManager defaultManager] removeItemAtPath:dst error:nil];
+    if (![[NSFileManager defaultManager] copyItemAtPath:_sourcePath toPath:dst error:nil]) return;
+    UIActivityViewController *vc=[[UIActivityViewController alloc] initWithActivityItems:@[[NSURL fileURLWithPath:dst]] applicationActivities:nil];
     vc.popoverPresentationController.barButtonItem=self.navigationItem.rightBarButtonItem;
     [self presentViewController:vc animated:YES completion:nil];
 }
