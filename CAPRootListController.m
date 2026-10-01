@@ -18,7 +18,7 @@
         for (NSString *category in categories) {
             NSUInteger count=0;
             for (NSDictionary *report in reports) if ([report[@"category"] isEqualToString:category]) count++;
-            PSSpecifier *row=[PSSpecifier preferenceSpecifierNamed:category target:self set:nil get:nil detail:nil cell:PSLinkCell edit:nil];
+            PSSpecifier *row=[PSSpecifier preferenceSpecifierNamed:category target:self set:nil get:nil detail:[CAReportViewController class] cell:PSLinkCell edit:nil];
             [row setProperty:[NSString stringWithFormat:@"%lu 条日志",(unsigned long)count] forKey:@"footerText"];
             [row setProperty:category forKey:@"category"];
             [row setProperty:@YES forKey:@"isController"];
@@ -32,8 +32,8 @@
         NSString *line=[NSString stringWithFormat:@"%@ · 发现 %@ 个 IPS · 解析 %@ 个", [diagnostics[@"exists"] boolValue] ? @"目录可访问" : @"目录不可访问", diagnostics[@"matched"] ?: @0, diagnostics[@"parsed"] ?: @0];
         [items addObject:[PSSpecifier preferenceSpecifierNamed:line target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
 
-        PSSpecifier *refresh=[PSSpecifier preferenceSpecifierNamed:@"重新扫描" target:self set:nil get:nil detail:nil cell:PSLinkCell edit:nil];
-        [items addObject:refresh];
+        PSSpecifier *refresh=[PSSpecifier preferenceSpecifierNamed:@"重新扫描" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
+        [refresh setProperty:NSStringFromSelector(@selector(reloadNow)) forKey:@"action"];
         _specifiers=[items copy];
     }
     return _specifiers;
@@ -41,28 +41,9 @@
 
 - (void)viewDidLoad { [super viewDidLoad]; self.title=@"分析日志"; }
 - (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; _specifiers=nil; [self reloadSpecifiers]; }
-- (void)reloadNow:(PSSpecifier *)specifier {
-    (void)specifier;
+- (void)reloadNow {
     _specifiers=nil;
-    [super reloadSpecifiers];
+    [self reloadSpecifiers];
 }
 
-- (void)tableView:(UITableView *)tableView didSelectRowAtIndexPath:(NSIndexPath *)indexPath {
-    PSSpecifier *specifier=[self specifierAtIndexPath:indexPath];
-    NSString *name=[specifier name];
-    NSArray *categories=@[@"崩溃",@"内存",@"重启",@"资源",@"其他"];
-    if ([categories containsObject:name]) {
-        CAReportViewController *controller=[[CAReportViewController alloc] initWithCategory:name];
-        [self.navigationController pushViewController:controller animated:YES];
-        [tableView deselectRowAtIndexPath:indexPath animated:YES];
-        return;
-    }
-    if ([name isEqualToString:@"重新扫描"]) {
-        [tableView deselectRowAtIndexPath:indexPath animated:YES];
-        _specifiers=nil;
-        [self reloadSpecifiers];
-        return;
-    }
-    [super tableView:tableView didSelectRowAtIndexPath:indexPath];
-}
 @end
