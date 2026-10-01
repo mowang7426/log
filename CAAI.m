@@ -1,4 +1,6 @@
 #import "CAAI.h"
+#import "CALogStore.h"
+#import <CommonCrypto/CommonDigest.h>
 #import <Preferences/PSSpecifier.h>
 #import <Preferences/PSTableCell.h>
 
@@ -110,7 +112,21 @@ static NSString * CAModelsURL(NSString *raw) {
     [[[NSURLSession sharedSession] dataTaskWithRequest:q completionHandler:^(NSData *data,NSURLResponse *response,NSError *error){NSDictionary *o=data?[NSJSONSerialization JSONObjectWithData:data options:0 error:nil]:nil;NSInteger status=[(NSHTTPURLResponse *)response statusCode];NSString *text=o[@"choices"][0][@"message"][ @"content"];NSString *msg=error.localizedDescription ?: o[@"error"][@"message"] ?: text ?: [NSString stringWithFormat:@"HTTP %ld",(long)status];BOOL ok=!error&&status>=200&&status<300&&text.length;dispatch_async(dispatch_get_main_queue(),^{if(completion)completion(ok,msg);});}]resume];
 }
 - (void)analyzeReport:(NSDictionary *)report includeSource:(BOOL)includeSource completion:(void (^)(NSString *,NSError *))completion {
-    NSUserDefaults *d=[NSUserDefaults standardUserDefaults]; NSString *model=[d stringForKey:kModel] ?: @""; if(!model.length){if(completion)completion(nil,[NSError errorWithDomain:@"CAAI" code:1 userInfo:@{NSLocalizedDescriptionKey:@"请先选择或填写模型名称。"}]);return;}
+    NSString *fingerprint=[[CALogStore sharedStore] fingerprintForReport:report];
+    NSData *sourceData=[NSData dataWithContentsOfFile:report[@"path"] options:0 error:nil];
+    if (sourceData.length) {
+        unsigned char digest[CC_SHA256_DIGEST_LENGTH];
+        CC_SHA256(sourceData.bytes,(CC_LONG)sourceData.length,digest);
+        NSMutableString *exact=[NSMutableString string];
+        for (NSUInteger i=0;i<CC_SHA256_DIGEST_LENGTH;i++) [exact appendFormat:@"%02x",digest[i]];
+        fingerprint=exact;
+    }
+    NSDictionary *cached=[[CALogStore sharedStore] analysisCacheForFingerprint:fingerprint];
+    NSString *cachedAI=cached[@"aiDiagnosis"];
+    if (cachedAI.length) { if(completion) completion(cachedAI,nil); return; }
+    NSUserDefaults *d=[NSUserDefaults standardUserDefaults];
+    NSString *model=[d stringForKey:kModel] ?: @"";
+    if (!model.length) { if(completion) completion(nil,[NSError errorWithDomain:@"CAAI" code:1 userInfo:@{NSLocalizedDescriptionKey:@"请先选择或填写模型名称。"}]); return; }
     NSMutableDictionary *p=[NSMutableDictionary dictionary];
     NSArray *allowed=@[@"normalizedProcessName",@"normalizedBundleID",@"normalizedPID",@"normalizedSystemVersion",@"normalizedExceptionType",@"normalizedSignal",@"normalizedCodes",@"normalizedSubtype",@"normalizedAddress",@"normalizedFaultingThread",@"normalizedThreadCount",@"normalizedImageCount",@"category",@"diagnosis",@"timestamp",@"incident_id",@"bug_type",@"app_version",@"build_version",@"procRole",@"coalitionID",@"exception",@"termination"];
     for (NSString *key in allowed) if (report[key] && report[key] != [NSNull null]) p[key]=report[key];
@@ -134,6 +150,7 @@ static NSString * CAModelsURL(NSString *raw) {
             e=[NSError errorWithDomain:@"CAAI" code:status userInfo:@{NSLocalizedDescriptionKey:detail}];
         }
         if (error && !error.localizedDescription.length) e=[NSError errorWithDomain:@"CAAI" code:-1 userInfo:@{NSLocalizedDescriptionKey:@"请求未收到服务器响应，请检查网络、接口地址和服务商状态。"}];
+        if (!e && text.length) [[CALogStore sharedStore] saveAnalysisCache:@{@"aiDiagnosis":text,@"localDiagnosis":[[CALogStore sharedStore] localAnalysisForReport:report]} forFingerprint:fingerprint];
         dispatch_async(dispatch_get_main_queue(), ^{ if (completion) completion(text,e); });
     }] resume];
 }

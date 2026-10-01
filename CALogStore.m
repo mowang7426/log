@@ -1,4 +1,57 @@
 #import "CALogStore.h"
+#import <CommonCrypto/CommonDigest.h>
+
+// Canonical, length-delimited strings avoid dictionary-order and separator collisions.
+static NSString *CAStableString(id value) {
+    if (!value || value == [NSNull null]) return @"";
+    if ([value isKindOfClass:[NSString class]])
+        return [value stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if ([value isKindOfClass:[NSNumber class]]) return [value stringValue];
+    if ([value isKindOfClass:[NSArray class]]) {
+        NSMutableString *out=[NSMutableString stringWithString:@"["];
+        for (id item in value) {
+            NSString *part=CAStableString(item);
+            [out appendFormat:@"%lu:%@",(unsigned long)part.length,part];
+        }
+        [out appendString:@"]"];
+        return out;
+    }
+    if ([value isKindOfClass:[NSDictionary class]]) {
+        NSMutableString *out=[NSMutableString stringWithString:@"{"];
+        NSArray *keys=[[value allKeys] sortedArrayUsingSelector:@selector(compare:)];
+        for (NSString *key in keys) {
+            NSString *part=CAStableString(value[key]);
+            [out appendFormat:@"%lu:%@%lu:%@",(unsigned long)key.length,key,(unsigned long)part.length,part];
+        }
+        [out appendString:@"}"];
+        return out;
+    }
+    return @"";
+}
+
+static BOOL CAValidFingerprint(NSString *fingerprint) {
+    if (![fingerprint isKindOfClass:[NSString class]] || fingerprint.length != 64) return NO;
+    NSCharacterSet *invalid=[[NSCharacterSet characterSetWithCharactersInString:@"0123456789abcdef"] invertedSet];
+    return [fingerprint rangeOfCharacterFromSet:invalid].location == NSNotFound;
+}
+
+static BOOL CAStringArray(id value) {
+    if (![value isKindOfClass:[NSArray class]]) return NO;
+    for (id item in value) if (![item isKindOfClass:[NSString class]]) return NO;
+    return YES;
+}
+
+static BOOL CAValidCache(NSDictionary *cache, NSString *fingerprint) {
+    if (![cache isKindOfClass:[NSDictionary class]] || ![cache[@"fingerprint"] isEqual:fingerprint]) return NO;
+    if (![cache[@"createdAt"] isKindOfClass:[NSString class]] || ![cache[@"createdAt"] length]) return NO;
+    if (![cache[@"localDiagnosis"] isKindOfClass:[NSDictionary class]]) return NO;
+    NSDictionary *local=cache[@"localDiagnosis"];
+    if (!CAStringArray(local[@"facts"]) || !CAStringArray(local[@"recommendations"]) ||
+        ![local[@"summary"] isKindOfClass:[NSString class]]) return NO;
+    return [cache[@"aiDiagnosis"] isKindOfClass:[NSString class]] &&
+        [cache[@"confirmed"] isKindOfClass:[NSNumber class]] &&
+        [cache[@"rootCause"] isKindOfClass:[NSString class]] && CAStringArray(cache[@"recommendations"]);
+}
 
 static NSString * const CAUnknown = @"其他";
 
@@ -153,14 +206,154 @@ static NSString * const CAUnknown = @"其他";
         return @"崩溃";
     return CAUnknown;
 }
+- (NSString *)fingerprintForReport:(NSDictionary *)report {
+    NSDictionary *r=[self normalizedReport:report ?: @{}];
+    NSMutableString *signature=[NSMutableString stringWithString:@"CAFingerprint-v1;"];
+    NSArray *fields=@[@"category", @"bug_type", @"normalizedExceptionType", @"normalizedSignal",
+                      @"normalizedProcessName", @"normalizedBundleID", @"normalizedCodes",
+                      @"normalizedSubtype", @"normalizedTermination", @"watchdogTimeout", @"panicString",
+                      @"largestProcess", @"parseError"];
+    for (NSString *key in fields) {
+        id value=[key isEqualToString:@"category"] ? [self categoryForReport:r] : r[key];
+        NSString *part=CAStableString(value);
+        [signature appendFormat:@"%lu:%@%lu:%@;",(unsigned long)key.length,key,(unsigned long)part.length,part];
+    }
+    NSData *bytes=[signature dataUsingEncoding:NSUTF8StringEncoding];
+    unsigned char digest[CC_SHA256_DIGEST_LENGTH];
+    CC_SHA256_CTX context;
+    CC_SHA256_Init(&context);
+    // Chunking avoids truncation when NSUInteger exceeds CommonCrypto's CC_LONG.
+    const unsigned char *cursor=bytes.bytes;
+    NSUInteger remaining=bytes.length;
+    while (remaining) {
+        CC_LONG count=(CC_LONG)MIN(remaining,(NSUInteger)1048576);
+        CC_SHA256_Update(&context,cursor,count);
+        cursor+=count;
+        remaining-=count;
+    }
+    CC_SHA256_Final(digest,&context);
+    NSMutableString *result=[NSMutableString stringWithCapacity:64];
+    for (NSUInteger i=0; i<CC_SHA256_DIGEST_LENGTH; i++) [result appendFormat:@"%02x",digest[i]];
+    return result;
+}
+
+- (NSString *)analysisCacheDirectory {
+    // Preferences plugins run in the host's home; no new entitlement or framework is needed.
+    return [NSHomeDirectory() stringByAppendingPathComponent:@"Library/Preferences/CrashAnalyzer/AnalysisCache"];
+}
+
+- (NSDictionary *)analysisCacheForFingerprint:(NSString *)fingerprint {
+    if (!CAValidFingerprint(fingerprint)) return nil;
+    @synchronized (self) {
+        NSString *path=[[self analysisCacheDirectory] stringByAppendingPathComponent:[fingerprint stringByAppendingString:@".json"]];
+        NSData *data=[NSData dataWithContentsOfFile:path options:0 error:nil];
+        if (!data) return nil;
+        id cache=[NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+        return CAValidCache(cache,fingerprint) ? cache : nil;
+    }
+}
+
+- (BOOL)saveAnalysisCache:(NSDictionary *)cache forFingerprint:(NSString *)fingerprint {
+    if (!CAValidFingerprint(fingerprint) || ![cache isKindOfClass:[NSDictionary class]]) return NO;
+    @synchronized (self) {
+        NSMutableDictionary *entry=[[self analysisCacheForFingerprint:fingerprint] mutableCopy];
+        if (!entry) {
+            NSDateFormatter *format=[NSDateFormatter new];
+            format.locale=[[NSLocale alloc] initWithLocaleIdentifier:@"en_US_POSIX"];
+            format.timeZone=[NSTimeZone timeZoneForSecondsFromGMT:0];
+            format.dateFormat=@"yyyy-MM-dd'T'HH:mm:ss.SSS'Z'";
+            entry=[@{@"fingerprint":fingerprint, @"localDiagnosis":@{@"facts":@[], @"recommendations":@[], @"summary":@""},
+                     @"createdAt":[format stringFromDate:[NSDate date]], @"aiDiagnosis":@"", @"confirmed":@NO,
+                     @"rootCause":@"", @"recommendations":@[]} mutableCopy];
+        }
+        // Whitelist fields. Callers cannot alter the entry identity or original creation time.
+        for (NSString *key in @[@"localDiagnosis", @"aiDiagnosis", @"confirmed", @"rootCause", @"recommendations"])
+            if (cache[key]) entry[key]=cache[key];
+        if (!CAValidCache(entry,fingerprint) || ![NSJSONSerialization isValidJSONObject:entry]) return NO;
+        NSData *data=[NSJSONSerialization dataWithJSONObject:entry options:0 error:nil];
+        if (!data) return NO;
+        NSString *directory=[self analysisCacheDirectory];
+        if (![[NSFileManager defaultManager] createDirectoryAtPath:directory withIntermediateDirectories:YES attributes:nil error:nil]) return NO;
+        NSString *path=[directory stringByAppendingPathComponent:[fingerprint stringByAppendingString:@".json"]];
+        return [data writeToFile:path options:NSDataWritingAtomic error:nil];
+    }
+}
+
+- (NSDictionary *)localAnalysisForReport:(NSDictionary *)report {
+    NSDictionary *r=[self normalizedReport:report ?: @{}];
+    NSMutableArray *facts=[NSMutableArray array];
+    NSMutableArray *advice=[NSMutableArray array];
+    NSString *bug=CAStableString(r[@"bug_type"]);
+    NSString *process=CAStableString(r[@"normalizedProcessName"]);
+    if (!process.length) process=@"未知进程";
+    NSString *exception=[CAStableString(r[@"normalizedExceptionType"]) uppercaseString];
+    NSString *signal=[CAStableString(r[@"normalizedSignal"]) uppercaseString];
+    NSDictionary *term=[r[@"normalizedTermination"] isKindOfClass:[NSDictionary class]] ? r[@"normalizedTermination"] : @{};
+    NSString *evidence=[[NSString stringWithFormat:@"%@ %@ %@ %@ %@",CAStableString(term),
+                         CAStableString(r[@"normalizedCodes"]), CAStableString(r[@"normalizedSubtype"]),
+                         CAStableString(r[@"reason"]), CAStableString(r[@"event"])] lowercaseString];
+    BOOL parseError=[r[@"parseError"] respondsToSelector:@selector(boolValue)] && [r[@"parseError"] boolValue];
+    BOOL matched=NO;
+    if (parseError) {
+        [facts addObject:@"已找到日志文件，但格式暂未解析。"];
+        [advice addObject:@"打开源文件核对格式；当前无法据此判断根因。"];
+    } else {
+        [facts addObject:[NSString stringWithFormat:@"进程：%@；报告类型：%@；分类：%@。",process,bug.length ? bug : @"未知",[self categoryForReport:r]]];
+        if ([bug isEqualToString:@"298"] || r[@"largestProcess"] || [evidence containsString:@"jetsam"]) {
+            matched=YES;
+            [facts addObject:@"日志包含 Jetsam / 内存资源终止线索；不能仅凭此证明某个进程发生内存泄漏。"];
+            if (r[@"largestProcess"]) [facts addObject:[NSString stringWithFormat:@"largestProcess：%@（不等于已确认被终止的进程）。",CAStableString(r[@"largestProcess"])]];
+            [advice addObject:@"查看 processes 中被终止项的 reason、内存占用和系统压力；区分单进程内存上限与全局内存不足，再排查峰值分配和泄漏。"];
+        }
+        if ([exception containsString:@"EXC_BAD_ACCESS"]) {
+            matched=YES;
+            [facts addObject:[NSString stringWithFormat:@"异常类型为 %@，属于内存访问异常；具体责任模块尚未确定。",exception]];
+            [advice addObject:@"结合异常地址、subtype、故障线程和符号化堆栈排查无效指针、释放后使用或越界；镜像中出现第三方模块并不能证明其导致异常。"];
+        }
+        BOOL watchdog=r[@"watchdogTimeout"] != nil || [evidence containsString:@"watchdog"] ||
+            [evidence containsString:@"8badf00d"] || [CAStableString(term[@"code"]) isEqualToString:@"2343432205"];
+        if (watchdog) {
+            matched=YES;
+            [facts addObject:@"终止字段或超时字段包含 watchdog（看门狗）线索，提示系统监测到响应超时。"];
+            [advice addObject:@"核对 termination 的超时阶段与预算，检查启动、恢复、退出期间主线程阻塞、同步 I/O、死锁及长任务；超时不等同于系统内存不足。"];
+        }
+        if ([bug isEqualToString:@"210"] || CAStableString(r[@"panicString"]).length) {
+            matched=YES;
+            [facts addObject:@"报告类型或 panicString 表明存在内核 panic / 异常重启事件，不能直接归因于某个应用或硬件故障。"];
+            [advice addObject:@"核对 panicString、关联时间和重复模式，区分驱动、系统、外设及硬件线索；保留完整 panic 日志，反复发生时再进一步检测。"];
+        }
+        BOOL sigkill=[signal containsString:@"SIGKILL"] ||
+            ([[CAStableString(term[@"namespace"]) uppercaseString] isEqualToString:@"SIGNAL"] && [CAStableString(term[@"code"]) isEqualToString:@"9"]);
+        if (sigkill) {
+            matched=YES;
+            [facts addObject:@"日志记录 SIGKILL（强制终止）；信号本身不说明是谁终止进程，也不证明是内存问题。"];
+            [advice addObject:@"结合 termination 的 namespace、code、byProc、indicator 以及同一时间的 Jetsam/watchdog 日志定位终止来源；信息不足时不要下确定结论。"];
+        }
+        if (!matched) {
+            if (exception.length) [facts addObject:[NSString stringWithFormat:@"记录的异常类型：%@。",exception]];
+            if (signal.length) [facts addObject:[NSString stringWithFormat:@"记录的信号：%@。",signal]];
+            [facts addObject:@"当前本地规则未命中特定根因；分类仅用于整理日志。"];
+            [advice addObject:@"查看原始日志、终止字段与故障线程；需要时使用 AI 辅助分析，并用原始证据验证其结论。"];
+        }
+    }
+    NSString *summary=[NSString stringWithFormat:@"【事实】\n%@\n\n【建议（非已确认根因）】\n%@",[facts componentsJoinedByString:@"\n"],[advice componentsJoinedByString:@"\n"]];
+    return @{@"facts":facts, @"recommendations":advice, @"summary":summary, @"rootCause":@"", @"confirmed":@NO};
+}
+
 - (NSString *)diagnosisForReport:(NSDictionary *)r {
-    if ([r[@"parseError"] boolValue]) return @"已找到日志文件，但格式暂未解析；请打开原始日志查看。";
-    NSString *cat=r[@"category"] ?: [self categoryForReport:r]; NSString *p=r[@"procName"] ?: r[@"app_name"] ?: @"未知进程"; NSDictionary *ex=r[@"exception"]; NSString *x=ex[@"type"] ?: @"未提供异常类型";
-    if ([cat isEqualToString:@"崩溃"]) return [NSString stringWithFormat:@"%@ 发生崩溃，异常为 %@。请结合触发线程和 injected images 排查第三方模块。",p,x];
-    if ([cat isEqualToString:@"内存"]) return [NSString stringWithFormat:@"%@ 可能因内存压力或 Jetsam 被终止。",p];
-    if ([cat isEqualToString:@"重启"]) return @"检测到 panic 或异常重启相关线索。";
-    if ([cat isEqualToString:@"资源"]) return @"检测到资源、看门狗或系统负载相关事件。";
-    return @"暂未识别日志类型，请查看原始内容。";
+    // Recompute cheap local rules to avoid stale evidence; only persist changes.
+    NSDictionary *local=[self localAnalysisForReport:r];
+    NSString *fingerprint=[self fingerprintForReport:r];
+    NSDictionary *cached=[self analysisCacheForFingerprint:fingerprint];
+    if (![cached[@"localDiagnosis"] isEqual:local]) {
+        NSMutableDictionary *update=[@{@"localDiagnosis":local} mutableCopy];
+        if (!cached) update[@"recommendations"]=local[@"recommendations"];
+        [self saveAnalysisCache:update forFingerprint:fingerprint];
+    }
+    // Existing list/detail controllers still receive an NSString in report["diagnosis"].
+    NSString *ai=cached[@"aiDiagnosis"];
+    if (ai.length) return [NSString stringWithFormat:@"%@\n\n【缓存 AI 分析（需核实）】\n%@",local[@"summary"],ai];
+    return local[@"summary"];
 }
 - (NSArray<NSDictionary *> *)reportsForCategory:(NSString *)category {
     NSArray *all=[self reports];
