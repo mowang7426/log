@@ -32,8 +32,8 @@ static NSString * CAModelsURL(NSString *raw) {
         [endpoint setProperty:@"https://api.openai.com/v1/chat/completions" forKey:@"defaultValue"]; [rows addObject:endpoint];
         PSSpecifier *fetch=[PSSpecifier preferenceSpecifierNamed:@"获取模型列表" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil]; fetch.buttonAction=@selector(fetchModels:); [rows addObject:fetch];
         if (models.count) {
-            PSSpecifier *picker=[PSSpecifier preferenceSpecifierNamed:@"选择模型" target:self set:@selector(setModel:specifier:) get:@selector(model:) detail:nil cell:PSMultiValueCell edit:nil];
-            [picker setProperty:models forKey:@"values"]; [picker setProperty:models forKey:@"titles"]; [rows addObject:picker];
+            PSSpecifier *picker=[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"可选模型：%@",[models componentsJoinedByString:@"、"]] target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil];
+            [rows addObject:picker];
         }
         PSSpecifier *manual=[PSSpecifier preferenceSpecifierNamed:@"模型名称（也可手动填写）" target:self set:@selector(setModel:specifier:) get:@selector(model:) detail:nil cell:PSEditTextCell edit:nil]; [manual setProperty:@"deepseek-ai/DeepSeek-V4-Pro" forKey:@"placeholder"]; [rows addObject:manual];
         PSSpecifier *key=[PSSpecifier preferenceSpecifierNamed:@"API Key" target:self set:@selector(setKey:specifier:) get:@selector(key:) detail:nil cell:PSEditTextCell edit:nil]; [rows addObject:key];
