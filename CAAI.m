@@ -90,6 +90,8 @@ static NSString * CAModelsURL(NSString *raw) {
     if (model.length) [[NSUserDefaults standardUserDefaults] setObject:model forKey:kModel];
     [self.navigationController popViewControllerAnimated:YES];
 }
+@end
+
 @implementation CAAIService
 + (instancetype)shared { static CAAIService *s; static dispatch_once_t once; dispatch_once(&once,^{s=[self new];}); return s; }
 - (NSMutableURLRequest *)requestTo:(NSString *)url method:(NSString *)method body:(NSDictionary *)body {
