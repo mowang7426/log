@@ -3,61 +3,30 @@
 #import <Preferences/PSSpecifier.h>
 #import <Preferences/PSTableCell.h>
 
-@implementation CAReportViewController {
-    NSString *_category;
-    NSDictionary *_singleReport;
+@implementation CAReportViewController
+
+// Resolve category when rendering, regardless of how Preferences constructs us.
+- (NSString *)reportCategory { return nil; }
+
+- (void)setSpecifier:(PSSpecifier *)specifier {
+    [super setSpecifier:specifier];
+    _specifiers=nil;
 }
 
 - (instancetype)initWithSpecifier:(PSSpecifier *)specifier {
     self=[super init];
-    if (self) {
-        self.specifier=specifier;
-        id category=[specifier propertyForKey:@"category"];
-        if (![category isKindOfClass:[NSString class]] || ![category length]) category=specifier.name;
-        if ([category isKindOfClass:[NSString class]]) {
-            NSArray *known=@[@"崩溃",@"内存",@"重启",@"资源",@"其他",@"全部日志"];
-            for (NSString *value in known) {
-                if ([category hasPrefix:value]) { _category=[value copy]; break; }
-            }
-        }
-        id path=[specifier propertyForKey:@"reportPath"];
-        if (![path isKindOfClass:[NSString class]] || ![path length]) path=specifier.properties[@"reportPath"];
-        if ([path isKindOfClass:[NSString class]] && [path length]) _singleReport=[[[CALogStore sharedStore] reportAtPath:path] copy];
-        if (!_category && [_singleReport[@"category"] isKindOfClass:[NSString class]]) _category=[_singleReport[@"category"] copy];
-        if (!_category) _category=@"全部日志";
-    }
-    return self;
-}
-
-- (instancetype)initWithCategory:(NSString *)category {
-    self=[super init];
-    if (self) _category=[category copy];
+    if (self) self.specifier=specifier;
     return self;
 }
 
 - (id)specifiers {
     if (!_specifiers) {
         NSMutableArray *rows=[NSMutableArray array];
-        if (_singleReport) {
-            NSDictionary *r=_singleReport;
-            NSString *exception=([r[@"exception"] isKindOfClass:[NSDictionary class]]) ? (r[@"exception"][@"type"] ?: @"未知") : @"未知";
-            NSArray *fields=@[
-                @[@"进程",r[@"procName"] ?: r[@"app_name"] ?: @"未知"],
-                @[@"分类",r[@"category"] ?: @"其他"],
-                @[@"时间",r[@"timestamp"] ?: r[@"captureTime"] ?: @"未知"],
-                @[@"异常",exception],
-                @[@"诊断",r[@"diagnosis"] ?: @"暂无规则分析"],
-                @[@"文件",r[@"fileName"] ?: @"未知"]
-            ];
-            for (NSArray *f in fields) {
-                PSSpecifier *line=[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"%@：%@",f[0],f[1]] target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil];
-                [rows addObject:line];
-            }
-        } else {
-            NSArray *reports=nil;
-            if ([_category isEqualToString:@"全部日志"]) reports=[[CALogStore sharedStore] reports];
-            else reports=[[CALogStore sharedStore] reportsForCategory:_category];
-            PSSpecifier *head=[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"%@ · %lu 条",_category,(unsigned long)reports.count] target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
+        NSString *category=[self reportCategory];
+        NSArray *reports=category.length ? [[CALogStore sharedStore] reportsForCategory:category] : @[];
+        self.title=category ?: @"分类未绑定";
+        {
+            PSSpecifier *head=[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"%@ · %lu 条",self.title,(unsigned long)reports.count] target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
             [head setProperty:@"点击一条日志查看详细分析" forKey:@"footerText"];
             [rows addObject:head];
             for (NSDictionary *r in reports) {
@@ -74,7 +43,7 @@
     }
     return _specifiers;
 }
-- (void)viewDidLoad { [super viewDidLoad]; self.title=_singleReport ? (_singleReport[@"procName"] ?: @"日志详情") : (_category ?: @"全部日志"); }
+- (void)viewDidLoad { [super viewDidLoad]; self.title=[self reportCategory] ?: @"分类未绑定"; }
 
 - (void)openReport:(PSSpecifier *)specifier {
     NSString *path=[specifier propertyForKey:@"reportPath"];
@@ -89,39 +58,49 @@
 }
 @end
 @implementation CACrashReportViewController
-- (instancetype)initWithSpecifier:(PSSpecifier *)specifier { return [super initWithCategory:@"崩溃"]; }
+- (NSString *)reportCategory { return @"崩溃"; }
 @end
 @implementation CAMemoryReportViewController
-- (instancetype)initWithSpecifier:(PSSpecifier *)specifier { return [super initWithCategory:@"内存"]; }
+- (NSString *)reportCategory { return @"内存"; }
 @end
 @implementation CARestartReportViewController
-- (instancetype)initWithSpecifier:(PSSpecifier *)specifier { return [super initWithCategory:@"重启"]; }
+- (NSString *)reportCategory { return @"重启"; }
 @end
 @implementation CAResourceReportViewController
-- (instancetype)initWithSpecifier:(PSSpecifier *)specifier { return [super initWithCategory:@"资源"]; }
+- (NSString *)reportCategory { return @"资源"; }
 @end
 @implementation CAOtherReportViewController
-- (instancetype)initWithSpecifier:(PSSpecifier *)specifier { return [super initWithCategory:@"其他"]; }
+- (NSString *)reportCategory { return @"其他"; }
 @end
 
 @implementation CAReportDetailController {
     NSDictionary *_report;
 }
+- (void)setSpecifier:(PSSpecifier *)specifier {
+    [super setSpecifier:specifier];
+    _report=nil;
+    _specifiers=nil;
+}
 - (instancetype)initWithSpecifier:(PSSpecifier *)specifier {
     self=[super init];
-    if (self) {
-        self.specifier=specifier;
-        NSString *file=[specifier name];
-        for (NSDictionary *r in [[CALogStore sharedStore] reports]) {
-            if ([r[@"fileName"] isEqualToString:file]) { _report=r; break; }
-        }
-    }
+    if (self) self.specifier=specifier;
     return self;
 }
 - (id)specifiers {
     if (!_specifiers) {
+        NSString *path=[self.specifier propertyForKey:@"reportPath"];
+        _report=[[CALogStore sharedStore] reportAtPath:path];
+        if (!_report) {
+            self.title=@"日志读取失败";
+            NSString *message=([path isKindOfClass:[NSString class]] && path.length)
+                ? [NSString stringWithFormat:@"无法读取日志，文件可能已删除或没有访问权限：%@",path]
+                : @"未收到所选日志的完整路径，请返回列表重新进入。";
+            _specifiers=@[[PSSpecifier preferenceSpecifierNamed:message target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
+            return _specifiers;
+        }
+        self.title=_report[@"procName"] ?: _report[@"app_name"] ?: @"日志详情";
         NSMutableArray *rows=[NSMutableArray array];
-        NSDictionary *r=_report ?: @{};
+        NSDictionary *r=_report;
         NSDictionary *e=[r[@"exception"] isKindOfClass:[NSDictionary class]] ? r[@"exception"] : @{};
         NSArray *fields=@[
             @[@"进程",r[@"procName"] ?: r[@"app_name"] ?: @"未知"],

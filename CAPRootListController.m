@@ -39,7 +39,8 @@
         [items addObject:[PSSpecifier preferenceSpecifierNamed:line target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
 
         PSSpecifier *refresh=[PSSpecifier preferenceSpecifierNamed:@"重新扫描" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
-        [refresh setProperty:NSStringFromSelector(@selector(reloadNow)) forKey:@"action"];
+        refresh.buttonAction=@selector(reloadNow);
+        [items addObject:refresh];
         _specifiers=[items copy];
     }
     return _specifiers;
