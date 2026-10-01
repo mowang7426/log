@@ -1,6 +1,7 @@
 #import "CAReportViewController.h"
 #import "CACaseStore.h"
 #import "CAAI.h"
+#import "CAWorkbenchController.h"
 #import "CALogStore.h"
 #import <Preferences/PSSpecifier.h>
 #import <Preferences/PSTableCell.h>
@@ -132,7 +133,9 @@ static PSSpecifier *CAShortRow(NSString *text) {
         [full appendFormat:@"\n\n底层本地分析 / 既有参考\n%@",r[@"diagnosis"] ?: @"暂无诊断"];
         PSSpecifier *analysis=[PSSpecifier preferenceSpecifierNamed:@"查看完整本地分析" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
         [analysis setProperty:full forKey:@"analysisText"]; analysis.buttonAction=@selector(showAnalysis:); [rows addObject:analysis];
-        PSSpecifier *ai=[PSSpecifier preferenceSpecifierNamed:@"AI 分析此日志" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
+        PSSpecifier *workbench=[PSSpecifier preferenceSpecifierNamed:@"第四版诊断工作台 · 证据 / 导出 / AI" target:nil set:nil get:nil detail:[CAWorkbenchController class] cell:PSLinkCell edit:nil];
+        [workbench setProperty:r[@"path"] ?: @"" forKey:@"reportPath"]; [rows addObject:workbench];
+        PSSpecifier *ai=[PSSpecifier preferenceSpecifierNamed:@"AI 分析此日志（预检）" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
         ai.buttonAction=@selector(analyzeWithAI:); [rows addObject:ai];
         [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"崩溃现场" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
         NSArray *scene=@[
@@ -209,30 +212,10 @@ static PSSpecifier *CAShortRow(NSString *text) {
 }
 - (void)analyzeWithAI:(PSSpecifier *)specifier {
     (void)specifier;
-    NSDate *started=[NSDate date];
-    __block BOOL cancelled=NO;
-    __block NSTimer *timer=nil;
-    UIAlertController *loading=[UIAlertController alertControllerWithTitle:@"AI 分析中" message:@"准备请求…\n阶段：准备数据" preferredStyle:UIAlertControllerStyleAlert];
-    [loading addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:^(UIAlertAction *a){ cancelled=YES; [timer invalidate]; }]];
-    [self presentViewController:loading animated:YES completion:nil];
-    timer=[NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(NSTimer *t){
-        if (cancelled) return;
-        NSTimeInterval elapsed=[[NSDate date] timeIntervalSinceDate:started];
-        loading.message=[NSString stringWithFormat:@"已用时 %.0f 秒\n阶段：等待模型响应\n网络请求仍在进行，请勿重复点击",elapsed];
-    }];
-    BOOL include=[[NSUserDefaults standardUserDefaults] boolForKey:@"CAAIIncludeSource"];
-    [[CAAIService shared] analyzeReport:_report includeSource:include completion:^(NSString *result,NSError *error){
-        [timer invalidate];
-        if (cancelled) return;
-        [loading dismissViewControllerAnimated:YES completion:^{
-            NSString *title=error ? @"AI 分析失败" : @"AI 分析结果";
-            NSString *text=error.localizedDescription ?: result ?: @"模型没有返回结果。";
-            UIAlertController *alert=[UIAlertController alertControllerWithTitle:title message:text preferredStyle:UIAlertControllerStyleAlert];
-            if (!error) [alert addAction:[UIAlertAction actionWithTitle:@"复制" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a){ [UIPasteboard generalPasteboard].string=text; }]];
-            [alert addAction:[UIAlertAction actionWithTitle:@"关闭" style:UIAlertActionStyleCancel handler:nil]];
-            [self presentViewController:alert animated:YES completion:nil];
-        }];
-    }];
+    PSSpecifier *s=[PSSpecifier preferenceSpecifierNamed:@"第四版诊断工作台" target:nil set:nil get:nil detail:nil cell:PSLinkCell edit:nil];
+    [s setProperty:_report[@"path"] ?: @"" forKey:@"reportPath"];
+    CAWorkbenchController *v=[[CAWorkbenchController alloc] initWithSpecifier:s];
+    [self.navigationController pushViewController:v animated:YES]; [v release];
 }
 - (void)viewDidLoad { [super viewDidLoad]; self.title=_report[@"procName"] ?: _report[@"app_name"] ?: @"日志详情"; }
 @end

@@ -1,4 +1,5 @@
 #import "CAAI.h"
+#import "CAWorkbenchController.h"
 #import "CACaseStore.h"
 #import "CALogStore.h"
 #import <CommonCrypto/CommonDigest.h>
@@ -12,17 +13,6 @@ static NSString * const kPrompt=@"CAAIPrompt";
 static NSString * const kSource=@"CAAIIncludeSource";
 static NSString * const kModels=@"CAAIFetchedModels";
 
-static NSString * CAChatURL(NSString *raw) {
-    NSString *s=[raw stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
-    while (s.length && [s hasSuffix:@"/"]) s=[s substringToIndex:s.length-1];
-    if ([s hasSuffix:@"/chat/completions"]) return s;
-    if ([s hasSuffix:@"/v1"]) return [s stringByAppendingString:@"/chat/completions"];
-    return [s stringByAppendingString:@"/v1/chat/completions"];
-}
-static NSString * CAModelsURL(NSString *raw) {
-    NSString *chat=CAChatURL(raw);
-    return [[chat substringToIndex:chat.length-@"/chat/completions".length] stringByAppendingString:@"/models"];
-}
 
 @implementation CAAIConfigController
 - (id)specifiers {
@@ -39,7 +29,7 @@ static NSString * CAModelsURL(NSString *raw) {
             [rows addObject:picker];
         }
         PSSpecifier *manual=[PSSpecifier preferenceSpecifierNamed:@"模型名称（也可手动填写）" target:self set:@selector(setModel:specifier:) get:@selector(model:) detail:nil cell:PSEditTextCell edit:nil]; [manual setProperty:@"deepseek-ai/DeepSeek-V4-Pro" forKey:@"placeholder"]; [rows addObject:manual];
-        PSSpecifier *key=[PSSpecifier preferenceSpecifierNamed:@"API Key" target:self set:@selector(setKey:specifier:) get:@selector(key:) detail:nil cell:PSEditTextCell edit:nil]; [rows addObject:key];
+        PSSpecifier *key=[PSSpecifier preferenceSpecifierNamed:@"API Key" target:self set:@selector(setKey:specifier:) get:@selector(key:) detail:nil cell:PSEditTextCell edit:nil]; [key setProperty:@YES forKey:@"isSecure"]; [key setProperty:@YES forKey:@"secureTextEntry"]; [rows addObject:key];
         PSSpecifier *prompt=[PSSpecifier preferenceSpecifierNamed:@"系统提示词" target:self set:@selector(setPrompt:specifier:) get:@selector(prompt:) detail:nil cell:PSEditTextCell edit:nil]; [prompt setProperty:@"分析 iOS IPS 日志，区分事实与推测，引用证据并给出排查步骤。" forKey:@"defaultValue"]; [rows addObject:prompt];
         PSSpecifier *test=[PSSpecifier preferenceSpecifierNamed:@"测试模型连接" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil]; test.buttonAction=@selector(testConnection:); [rows addObject:test];
         [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"隐私" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
@@ -69,7 +59,23 @@ static NSString * CAModelsURL(NSString *raw) {
         }];
     }];
 }
-- (void)testConnection:(PSSpecifier *)s { (void)s; UIAlertController *w=[UIAlertController alertControllerWithTitle:@"测试连接" message:@"发送最小测试请求…" preferredStyle:UIAlertControllerStyleAlert]; [self presentViewController:w animated:YES completion:nil]; [[CAAIService shared] testConnection:^(BOOL ok,NSString *message){ [w dismissViewControllerAnimated:YES completion:^{ UIAlertController *a=[UIAlertController alertControllerWithTitle:(ok?@"连接成功":@"连接失败") message:message preferredStyle:UIAlertControllerStyleAlert]; [a addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleCancel handler:nil]]; [self presentViewController:a animated:YES completion:nil]; }]; }]; }
+- (void)testConnection:(PSSpecifier *)s {
+    (void)s; NSError *e=nil;
+    NSDictionary *report=@{@"normalizedProcessName":@"connection test"};
+    NSDictionary *p=[[CAAIService shared] prepareReport:report includeSource:NO error:&e];
+    if (!p) { CAPresentText(self,@"预检失败",e.localizedDescription); return; }
+    UIAlertController *a=[UIAlertController alertControllerWithTitle:@"确认连接测试（可能计费）" message:[NSString stringWithFormat:@"模型：%@\n范围：structured\n实际 payload：%@ 字节\n最大输出 2048 tokens\n接口：%@\n不会自动重试。",p[@"model"],p[@"bytes"],p[@"endpoint"]] preferredStyle:UIAlertControllerStyleAlert];
+    [a addAction:[UIAlertAction actionWithTitle:@"发送测试" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *x){
+        UIAlertController *w=[UIAlertController alertControllerWithTitle:@"测试中" message:@"取消可终止网络任务；服务端可能已计费。" preferredStyle:UIAlertControllerStyleAlert];
+        __block BOOL cancelled=NO;
+        [w addAction:[UIAlertAction actionWithTitle:@"取消请求" style:UIAlertActionStyleCancel handler:^(UIAlertAction *y){ cancelled=YES; [[CAAIService shared] cancelAnalysis]; }]];
+        [self presentViewController:w animated:YES completion:^{
+            [[CAAIService shared] runPrepared:p report:report fresh:YES completion:^(NSString *r,NSError *error){ if (cancelled) return; [w dismissViewControllerAnimated:YES completion:^{ CAPresentText(self,error?@"测试失败":@"测试结果",error.localizedDescription ?: r); }]; }];
+        }];
+    }]];
+    [a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]]; [self presentViewController:a animated:YES completion:nil];
+}
+
 @end
 
 @implementation CAAIModelPickerController
@@ -92,70 +98,5 @@ static NSString * CAModelsURL(NSString *raw) {
     NSString *model=[specifier propertyForKey:@"modelValue"];
     if (model.length) [[NSUserDefaults standardUserDefaults] setObject:model forKey:kModel];
     [self.navigationController popViewControllerAnimated:YES];
-}
-@end
-
-@implementation CAAIService
-+ (instancetype)shared { static CAAIService *s; static dispatch_once_t once; dispatch_once(&once,^{s=[self new];}); return s; }
-- (NSMutableURLRequest *)requestTo:(NSString *)url method:(NSString *)method body:(NSDictionary *)body {
-    NSURL *u=[NSURL URLWithString:url]; if(!u)return nil; NSMutableURLRequest *q=[NSMutableURLRequest requestWithURL:u cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:180]; q.HTTPMethod=method;
-    NSString *key=[[NSUserDefaults standardUserDefaults] stringForKey:kKey]; if(key.length)[q setValue:[NSString stringWithFormat:@"Bearer %@",key] forHTTPHeaderField:@"Authorization"];
-    if(body){q.HTTPBody=[NSJSONSerialization dataWithJSONObject:body options:0 error:nil];[q setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];} return q;
-}
-- (void)fetchModels:(void (^)(NSArray *,NSString *))completion {
-    NSUserDefaults *d=[NSUserDefaults standardUserDefaults]; NSString *raw=[d stringForKey:kEndpoint] ?: @""; NSString *url=CAModelsURL(raw); NSMutableURLRequest *q=[self requestTo:url method:@"GET" body:nil];
-    if(!q){if(completion)completion(nil,@"接口地址格式无效。");return;}
-    [[[NSURLSession sharedSession] dataTaskWithRequest:q completionHandler:^(NSData *data,NSURLResponse *response,NSError *error){ NSDictionary *o=data?[NSJSONSerialization JSONObjectWithData:data options:0 error:nil]:nil; NSInteger status=[(NSHTTPURLResponse *)response statusCode]; NSArray *items=o[@"data"]; NSMutableArray *ids=[NSMutableArray array]; for(NSDictionary *m in items)if([m[@"id"] isKindOfClass:[NSString class]])[ids addObject:m[@"id"]]; NSString *msg=error.localizedDescription ?: o[@"error"][@"message"] ?: [NSString stringWithFormat:@"HTTP %ld；确认服务支持 GET %@",(long)status,url]; dispatch_async(dispatch_get_main_queue(),^{if(completion)completion((status>=200&&status<300&&ids.count)?ids:nil,(status>=200&&status<300&&ids.count)?nil:msg);}); }]resume];
-}
-- (void)testConnection:(void (^)(BOOL,NSString *))completion {
-    NSUserDefaults *d=[NSUserDefaults standardUserDefaults]; NSString *raw=[d stringForKey:kEndpoint] ?: @""; NSString *model=[d stringForKey:kModel] ?: @""; if(!model.length){if(completion)completion(NO,@"请填写或选择模型名称。");return;}
-    NSDictionary *body=@{@"model":model,@"messages":@[@{@"role":@"user",@"content":@"Reply with exactly: connection-ok"}],@"max_tokens":@8}; NSMutableURLRequest *q=[self requestTo:CAChatURL(raw) method:@"POST" body:body]; if(!q){if(completion)completion(NO,@"接口地址无效。");return;}
-    [[[NSURLSession sharedSession] dataTaskWithRequest:q completionHandler:^(NSData *data,NSURLResponse *response,NSError *error){NSDictionary *o=data?[NSJSONSerialization JSONObjectWithData:data options:0 error:nil]:nil;NSInteger status=[(NSHTTPURLResponse *)response statusCode];NSString *text=o[@"choices"][0][@"message"][ @"content"];NSString *msg=error.localizedDescription ?: o[@"error"][@"message"] ?: text ?: [NSString stringWithFormat:@"HTTP %ld",(long)status];BOOL ok=!error&&status>=200&&status<300&&text.length;dispatch_async(dispatch_get_main_queue(),^{if(completion)completion(ok,msg);});}]resume];
-}
-- (void)analyzeReport:(NSDictionary *)report includeSource:(BOOL)includeSource completion:(void (^)(NSString *,NSError *))completion {
-    NSString *fingerprint=[[CALogStore sharedStore] fingerprintForReport:report];
-    NSData *sourceData=[NSData dataWithContentsOfFile:report[@"path"] options:0 error:nil];
-    if (sourceData.length) {
-        unsigned char digest[CC_SHA256_DIGEST_LENGTH];
-        CC_SHA256(sourceData.bytes,(CC_LONG)sourceData.length,digest);
-        NSMutableString *exact=[NSMutableString string];
-        for (NSUInteger i=0;i<CC_SHA256_DIGEST_LENGTH;i++) [exact appendFormat:@"%02x",digest[i]];
-        fingerprint=exact;
-    }
-    NSDictionary *cached=[[CALogStore sharedStore] analysisCacheForFingerprint:fingerprint];
-    NSString *cachedAI=cached[@"aiDiagnosis"];
-    if (cachedAI.length) { if(completion) completion(cachedAI,nil); return; }
-    NSUserDefaults *d=[NSUserDefaults standardUserDefaults];
-    NSString *model=[d stringForKey:kModel] ?: @"";
-    if (!model.length) { if(completion) completion(nil,[NSError errorWithDomain:@"CAAI" code:1 userInfo:@{NSLocalizedDescriptionKey:@"请先选择或填写模型名称。"}]); return; }
-    NSMutableDictionary *p=[NSMutableDictionary dictionary];
-    NSArray *allowed=@[@"normalizedProcessName",@"normalizedBundleID",@"normalizedPID",@"normalizedSystemVersion",@"normalizedExceptionType",@"normalizedSignal",@"normalizedCodes",@"normalizedSubtype",@"normalizedAddress",@"normalizedFaultingThread",@"normalizedThreadCount",@"normalizedImageCount",@"category",@"diagnosis",@"timestamp",@"incident_id",@"bug_type",@"app_version",@"build_version",@"procRole",@"coalitionID",@"exception",@"termination"];
-    for (NSString *key in allowed) if (report[key] && report[key] != [NSNull null]) p[key]=report[key];
-    NSString *path=report[@"path"];
-    if(includeSource&&path.length){NSString *src=[NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];if(src.length && src.length<600000)p[@"source_file"]=src;}
-    NSData *jd=[NSJSONSerialization dataWithJSONObject:p options:0 error:nil];
-    NSString *prompt=[d stringForKey:kPrompt] ?: @"分析 iOS IPS 日志，提供证据和排查步骤";
-    NSString *content=[NSString stringWithFormat:@"%@\n\n日志：%@",prompt,jd?[[NSString alloc]initWithData:jd encoding:NSUTF8StringEncoding]:p];
-    NSDictionary *body=@{@"model":model,@"messages":@[@{@"role":@"user",@"content":content}],@"temperature":@0.2};
-    NSData *bodyData=[NSJSONSerialization dataWithJSONObject:body options:0 error:nil];
-    if(bodyData.length>900000){if(completion)completion(nil,[NSError errorWithDomain:@"CAAI" code:3 userInfo:@{NSLocalizedDescriptionKey:[NSString stringWithFormat:@"请求内容过大（%lu 字节），请关闭“发送完整源文件”。",(unsigned long)bodyData.length]}]);return;}
-    NSMutableURLRequest *q=[self requestTo:CAChatURL([d stringForKey:kEndpoint] ?: @"") method:@"POST" body:body]; if(!q){if(completion)completion(nil,[NSError errorWithDomain:@"CAAI" code:2 userInfo:@{NSLocalizedDescriptionKey:@"接口地址无效。"}]);return;}
-    [[[NSURLSession sharedSession] dataTaskWithRequest:q completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
-        NSDictionary *o=data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
-        NSInteger status=[(NSHTTPURLResponse *)response statusCode];
-        NSString *text=o[@"choices"][0][@"message"][@"content"];
-        NSError *e=error;
-        if (!text.length && !e) {
-            NSString *server=o[@"error"][@"message"];
-            NSString *detail=server ?: [NSString stringWithFormat:@"HTTP %ld，响应 %lu 字节。",(long)status,(unsigned long)data.length];
-            e=[NSError errorWithDomain:@"CAAI" code:status userInfo:@{NSLocalizedDescriptionKey:detail}];
-        }
-        if (error && !error.localizedDescription.length) e=[NSError errorWithDomain:@"CAAI" code:-1 userInfo:@{NSLocalizedDescriptionKey:@"请求未收到服务器响应，请检查网络、接口地址和服务商状态。"}];
-        if (!e && text.length) {
-            [[CALogStore sharedStore] saveAnalysisCache:@{@"aiDiagnosis":text,@"localDiagnosis":[[CALogStore sharedStore] localAnalysisForReport:report]} forFingerprint:fingerprint];
-            [[CACaseStore sharedStore] saveUnverifiedAnswer:text forReport:report];
-        }
-        dispatch_async(dispatch_get_main_queue(), ^{ if (completion) completion(text,e); });
-    }] resume];
 }
 @end

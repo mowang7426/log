@@ -22,6 +22,10 @@ jobs:
           /tmp/ca-case-tests-mrc
           clang -fno-objc-arc -fblocks -framework Foundation CALogStore.m CACaseStore.m CALogStoreTests.m -o /tmp/ca-human-tests
           /tmp/ca-human-tests
+          clang -Wall -Wextra -Werror -fobjc-arc -framework Foundation CAWorkbench.m CAWorkbenchTests.m -o /tmp/ca-workbench-tests
+          /tmp/ca-workbench-tests
+          clang -Wall -Wextra -Werror -fno-objc-arc -fblocks -framework Foundation CAWorkbench.m CAWorkbenchTests.m -o /tmp/ca-workbench-tests-mrc
+          /tmp/ca-workbench-tests-mrc
 
       - name: Install dependencies
         run: |

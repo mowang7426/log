@@ -1,6 +1,7 @@
 #import "CAPRootListController.h"
 #import "CALearningController.h"
 #import "CAAI.h"
+#import "CAWorkbenchController.h"
 #import "CALogStore.h"
 #import "CAReportViewController.h"
 #import <Preferences/PSSpecifier.h>
@@ -46,6 +47,9 @@
         PSSpecifier *ai=[PSSpecifier preferenceSpecifierNamed:@"AI 分析配置" target:nil set:nil get:nil detail:[CAAIConfigController class] cell:PSLinkCell edit:nil];
         [items addObject:ai];
 
+        [items addObject:[PSSpecifier preferenceSpecifierNamed:@"AI 分析历史" target:nil set:nil get:nil detail:[CAHistoryController class] cell:PSLinkCell edit:nil]];
+        PSSpecifier *about=[PSSpecifier preferenceSpecifierNamed:@"关于 · CrashAnalyzer 1.1.0" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
+        [about setProperty:@"第四版诊断工作台 · Build 8\nAuthor / Maintainer: MoWang\n已加载模块不是已证实根因；实测案例只是用户记录。" forKey:@"footerText"]; [items addObject:about];
         PSSpecifier *refresh=[PSSpecifier preferenceSpecifierNamed:@"重新扫描" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
         refresh.buttonAction=@selector(reloadNow:);
         [items addObject:refresh];

@@ -1,5 +1,7 @@
 #import "CALearningController.h"
 #import "CACaseStore.h"
+#import "CAWorkbench.h"
+#import "CAWorkbenchController.h"
 #import <UIKit/UIKit.h>
 #import <Preferences/PSSpecifier.h>
 #import <Preferences/PSTableCell.h>
@@ -7,7 +9,26 @@
 static NSString *CaseStatus(NSDictionary *c) {
     return [c[@"rejected"] boolValue]?@"已拒绝":([c[@"confirmed"] boolValue]?@"有用户实测记录（非根因保证）":@"未验证 AI 参考");
 }
-@implementation CALearningController
+@implementation CALearningController {
+    NSString *_query;
+    NSString *_filter;
+    NSUInteger _page;
+}
+- (void)dealloc { [_query release]; [_filter release]; [super dealloc]; }
+- (void)searchCases:(PSSpecifier *)s {
+    (void)s;
+    UIAlertController *a=[UIAlertController alertControllerWithTitle:@"按应用 / 模块搜索" message:@"只筛选显示；不改变严格历史匹配规则。空白清除搜索。" preferredStyle:UIAlertControllerStyleAlert];
+    [a addTextFieldWithConfigurationHandler:^(UITextField *f){ f.text=self->_query; f.placeholder=@"Bundle ID、应用或模块符号"; }];
+    __block UIAlertController *alert=a;
+    [a addAction:[UIAlertAction actionWithTitle:@"搜索" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){ [self->_query release]; self->_query=[alert.textFields.firstObject.text copy]; self->_page=0; [self refreshCases]; }]];
+    [a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]]; [self presentViewController:a animated:YES completion:nil];
+}
+- (void)filterCases:(PSSpecifier *)s {
+    (void)s; UIAlertController *a=[UIAlertController alertControllerWithTitle:@"显示验证状态" message:@"实测状态仅表示用户提交记录，并不证明根因。" preferredStyle:UIAlertControllerStyleAlert];
+    for(NSArray *pair in @[@[@"全部",@"all"],@[@"有用户实测记录",@"validated"],@[@"未验证",@"unverified"],@[@"已拒绝",@"rejected"]]) [a addAction:[UIAlertAction actionWithTitle:pair[0] style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){ [self->_filter release]; self->_filter=[pair[1] copy]; self->_page=0; [self refreshCases]; }]];
+    [a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]]; [self presentViewController:a animated:YES completion:nil];
+}
+- (void)pageCases:(PSSpecifier *)s { if ([[s propertyForKey:@"previous"] boolValue]) { if(_page)_page--; } else _page++; [self refreshCases]; }
 - (void)viewDidLoad { [super viewDidLoad]; self.title=@"本地学习与案例库"; }
 - (void)refreshCases {
     [_specifiers release]; _specifiers=nil;
@@ -28,13 +49,20 @@ static NSString *CaseStatus(NSDictionary *c) {
         NSDictionary *counts=[[CACaseStore sharedStore] summary];
         PSSpecifier *group=[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"案例库 · %@ 条",counts[@"total"]] target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
         [group setProperty:[NSString stringWithFormat:@"未验证 %@ · 有实测记录 %@ · 已拒绝 %@\n仅在应用、应用/构建版本、系统、异常类型、信号及故障线程符号证据均精确一致时检索。不会自动发起云端请求。",counts[@"unverified"],counts[@"validated"],counts[@"rejected"]] forKey:@"footerText"]; [rows addObject:group];
-        for(NSDictionary *c in [[CACaseStore sharedStore] allCases]) {
+        PSSpecifier *search=[PSSpecifier preferenceSpecifierNamed:@"搜索应用 / 模块" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil]; search.buttonAction=@selector(searchCases:); [rows addObject:search];
+        PSSpecifier *filter=[PSSpecifier preferenceSpecifierNamed:@"筛选验证状态" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil]; filter.buttonAction=@selector(filterCases:); [rows addObject:filter];
+        NSArray *visible=[CAWorkbench filterCases:[[CACaseStore sharedStore] allCases] query:_query status:_filter ?: @"all"];
+        NSUInteger start=MIN(_page*100,visible.count), end=MIN(start+100,visible.count);
+        for(NSDictionary *c in [visible subarrayWithRange:NSMakeRange(start,end-start)]) {
             NSString *shortID=[c[@"id"] substringToIndex:12];
             PSSpecifier *button=[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"%@ · %@",shortID,CaseStatus(c)] target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
             [button setProperty:c[@"id"] forKey:@"caseID"]; [button setProperty:c[@"createdAt"] forKey:@"footerText"];
             button.buttonAction=@selector(showCase:); [rows addObject:button];
         }
         if(![counts[@"total"] unsignedIntegerValue])[rows addObject:[PSSpecifier preferenceSpecifierNamed:@"暂无案例；手动 AI 分析成功且证据充分时保存参考。" target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
+        [rows addObject:[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"搜索：%@ · 状态：%@ · 匹配 %lu 项 · 第 %lu 页",_query ?: @"全部",_filter ?: @"all",(unsigned long)visible.count,(unsigned long)_page+1] target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
+        if (_page) { PSSpecifier *p=[PSSpecifier preferenceSpecifierNamed:@"上一页" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil]; [p setProperty:@YES forKey:@"previous"]; p.buttonAction=@selector(pageCases:); [rows addObject:p]; }
+        if (end<visible.count) { PSSpecifier *p=[PSSpecifier preferenceSpecifierNamed:@"下一页" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil]; p.buttonAction=@selector(pageCases:); [rows addObject:p]; }
         PSSpecifier *refresh=[PSSpecifier preferenceSpecifierNamed:@"刷新案例库" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
         refresh.buttonAction=@selector(refreshPressed:); [rows addObject:refresh];
         _specifiers=[rows mutableCopy];
