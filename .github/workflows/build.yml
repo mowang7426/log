@@ -18,6 +18,8 @@ jobs:
           set -e
           clang -fobjc-arc -framework Foundation -framework Security CACaseStore.m CACaseStoreTests.m -o /tmp/ca-case-tests
           /tmp/ca-case-tests
+          clang -fno-objc-arc -fblocks -framework Foundation -framework Security CACaseStore.m CACaseStoreTests.m -o /tmp/ca-case-tests-mrc
+          /tmp/ca-case-tests-mrc
 
       - name: Install dependencies
         run: |

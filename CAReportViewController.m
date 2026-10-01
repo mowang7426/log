@@ -1,4 +1,5 @@
 #import "CAReportViewController.h"
+#import "CACaseStore.h"
 #import "CAAI.h"
 #import "CALogStore.h"
 #import <Preferences/PSSpecifier.h>
@@ -8,11 +9,6 @@
 
 // Resolve category when rendering, regardless of how Preferences constructs us.
 - (NSString *)reportCategory { return nil; }
-
-- (void)setSpecifier:(PSSpecifier *)specifier {
-    [super setSpecifier:specifier];
-    _specifiers=nil;
-}
 
 - (instancetype)initWithSpecifier:(PSSpecifier *)specifier {
     self=[super init];
@@ -65,11 +61,13 @@
 @implementation CAReportDetailController {
     NSDictionary *_report;
 }
-- (void)setSpecifier:(PSSpecifier *)specifier {
-    [super setSpecifier:specifier];
-    _report=nil;
-    _specifiers=nil;
+- (void)viewWillAppear:(BOOL)animated {
+    [super viewWillAppear:animated];
+    [_report release]; _report=nil;
+    [_specifiers release]; _specifiers=nil;
+    [self reloadSpecifiers];
 }
+- (void)dealloc { [_report release]; [super dealloc]; }
 - (instancetype)initWithSpecifier:(PSSpecifier *)specifier {
     self=[super init];
     if (self) self.specifier=specifier;
@@ -78,18 +76,26 @@
 - (id)specifiers {
     if (!_specifiers) {
         NSString *path=[self.specifier propertyForKey:@"reportPath"];
-        _report=[[CALogStore sharedStore] reportAtPath:path];
+        _report=[[[CALogStore sharedStore] reportAtPath:path] retain];
         if (!_report) {
             self.title=@"日志读取失败";
             NSString *message=([path isKindOfClass:[NSString class]] && path.length)
                 ? [NSString stringWithFormat:@"无法读取日志，文件可能已删除或没有访问权限：%@",path]
                 : @"未收到所选日志的完整路径，请返回列表重新进入。";
-            _specifiers=[NSMutableArray arrayWithObject:[PSSpecifier preferenceSpecifierNamed:message target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
+            _specifiers=[[NSMutableArray alloc] initWithObjects:[PSSpecifier preferenceSpecifierNamed:message target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil],nil];
             return _specifiers;
         }
         self.title=_report[@"procName"] ?: _report[@"app_name"] ?: @"日志详情";
         NSMutableArray *rows=[NSMutableArray array];
         NSDictionary *r=_report;
+        CACaseStore *cases=[CACaseStore sharedStore];
+        NSDictionary *match=[cases matchingCaseForReport:r];
+        NSString *matchStatus=![cases settingEnabled:CAUseHistoricalCases] ? @"历史案例检索已关闭" :
+            (![CACaseStore evidenceForReport:r] ? @"证据不足，未检索历史案例" :
+            (match ? ([match[@"confirmed"] boolValue] ? @"匹配到有用户实测记录的历史 AI 参考（不保证本次根因）" : @"匹配到未验证 AI 参考（已关闭仅实测限制）") : @"没有符合当前采用设置的精确历史案例"));
+        PSSpecifier *local=[PSSpecifier preferenceSpecifierNamed:@"本地案例匹配状态" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
+        [local setProperty:[matchStatus stringByAppendingString:@"。本地检索不触发网络；手动 AI 按现有精确日志缓存/请求流程处理，不因历史案例匹配而跳过请求，也无自动云端回退。"] forKey:@"footerText"];
+        [rows addObject:local];
         [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"分析结论" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
         NSString *diagnosis=r[@"diagnosis"] ?: @"暂无诊断";
         PSSpecifier *analysis=[PSSpecifier preferenceSpecifierNamed:@"查看完整分析结论" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];

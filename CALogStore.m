@@ -355,7 +355,7 @@ static NSString * const CAUnknown = @"其他";
     NSString *ai=cached[@"aiDiagnosis"];
     if (ai.length) return [NSString stringWithFormat:@"%@\n\n【缓存 AI 分析（需核实）】\n%@",local[@"summary"],ai];
     NSDictionary *entry=[[CACaseStore sharedStore] matchingCaseForReport:r];
-    if (entry) return [NSString stringWithFormat:@"%@\n\n【本地历史案例：%@，本次根因仍需验证】\n%@",local[@"summary"],[entry[@"confirmed"] boolValue] ? @"含用户验证记录" : @"AI 未验证参考",entry[@"answer"]];
+    if (entry) return [NSString stringWithFormat:@"%@\n\n【本地历史案例：%@，本次根因仍需验证】\n%@\n用户实测记录：%@\n案例 ID：%@",local[@"summary"],[entry[@"confirmed"] boolValue] ? @"含用户实测记录（不保证根因）" : @"AI 未验证参考",entry[@"answer"],entry[@"testNote"] ?: @"无",entry[@"id"]];
     return local[@"summary"];
 }
 - (NSArray<NSDictionary *> *)reportsForCategory:(NSString *)category {

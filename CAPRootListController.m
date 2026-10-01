@@ -1,4 +1,5 @@
 #import "CAPRootListController.h"
+#import "CALearningController.h"
 #import "CAAI.h"
 #import "CALogStore.h"
 #import "CAReportViewController.h"
@@ -39,11 +40,14 @@
         NSString *line=[NSString stringWithFormat:@"%@ · 发现 %@ 个 IPS · 解析 %@ 个", [diagnostics[@"exists"] boolValue] ? @"目录可访问" : @"目录不可访问", diagnostics[@"matched"] ?: @0, diagnostics[@"parsed"] ?: @0];
         [items addObject:[PSSpecifier preferenceSpecifierNamed:line target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
 
+        PSSpecifier *learning=[PSSpecifier preferenceSpecifierNamed:@"本地学习与案例库" target:nil set:nil get:nil detail:[CALearningController class] cell:PSLinkCell edit:nil];
+        [items addObject:learning];
+
         PSSpecifier *ai=[PSSpecifier preferenceSpecifierNamed:@"AI 分析配置" target:nil set:nil get:nil detail:[CAAIConfigController class] cell:PSLinkCell edit:nil];
         [items addObject:ai];
 
         PSSpecifier *refresh=[PSSpecifier preferenceSpecifierNamed:@"重新扫描" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
-        refresh.buttonAction=@selector(reloadNow);
+        refresh.buttonAction=@selector(reloadNow:);
         [items addObject:refresh];
         _specifiers=[items mutableCopy];
     }
@@ -51,9 +55,10 @@
 }
 
 - (void)viewDidLoad { [super viewDidLoad]; self.title=@"分析日志"; }
-- (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; _specifiers=nil; [self reloadSpecifiers]; }
-- (void)reloadNow {
-    _specifiers=nil;
+- (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; [_specifiers release]; _specifiers=nil; [self reloadSpecifiers]; }
+- (void)reloadNow:(PSSpecifier *)specifier {
+    (void)specifier;
+    [_specifiers release]; _specifiers=nil;
     [self reloadSpecifiers];
 }
 
