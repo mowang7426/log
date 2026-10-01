@@ -45,7 +45,14 @@
 }
 - (void)viewDidLoad { [super viewDidLoad]; self.title=[self reportCategory] ?: @"分类未绑定"; }
 
-- (void)openReport:(PSSpecifier *)specifier {
+- (void)showAnalysis:(PSSpecifier *)specifier {
+    NSString *text=[specifier propertyForKey:@"analysisText"] ?: @"暂无分析结论";
+    UIAlertController *alert=[UIAlertController alertControllerWithTitle:@"完整分析结论" message:text preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"复制" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a){ [UIPasteboard generalPasteboard].string=text; }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"关闭" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
+
     NSString *path=[specifier propertyForKey:@"reportPath"];
     NSDictionary *report=[[CALogStore sharedStore] reportAtPath:path];
     if (![report isKindOfClass:[NSDictionary class]]) return;
@@ -105,8 +112,9 @@
         [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"分析结论" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
         NSString *diagnosis=r[@"diagnosis"] ?: @"暂无诊断";
         NSString *preview=diagnosis.length>48 ? [[diagnosis substringToIndex:48] stringByAppendingString:@"…"] : diagnosis;
-        PSSpecifier *analysis=[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"分析结论：%@",preview] target:nil set:nil get:nil detail:[CAAnalysisController class] cell:PSLinkCell edit:nil];
+        PSSpecifier *analysis=[PSSpecifier preferenceSpecifierNamed:@"查看完整分析结论" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
         [analysis setProperty:diagnosis forKey:@"analysisText"];
+        analysis.buttonAction=@selector(showAnalysis:);
         [rows addObject:analysis];
         [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"崩溃现场" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
         NSArray *scene=@[
