@@ -13,6 +13,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Run local case regression tests
+        run: |
+          set -e
+          clang -fobjc-arc -framework Foundation -framework Security CACaseStore.m CACaseStoreTests.m -o /tmp/ca-case-tests
+          /tmp/ca-case-tests
+
       - name: Install dependencies
         run: |
           brew install make dpkg ldid xz

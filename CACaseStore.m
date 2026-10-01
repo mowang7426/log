@@ -33,7 +33,7 @@ static NSString *Evidence(NSDictionary *r) {
 @implementation CACaseStore
 + (instancetype)sharedStore{static CACaseStore*s;static dispatch_once_t once;dispatch_once(&once,^{s=[self new];});return s;}
 - (instancetype)initWithDirectory:(NSString*)directory{self=[super init];if(self)_directory=[directory copy];return self;}
-- (NSString*)directory{if(!_directory)_directory=[NSHomeDirectory() stringByAppendingPathComponent:@"Library/Preferences/CrashAnalyzer/Cases"];return _directory;}
+- (NSString*)directory{if(!_directory)_directory=[[NSHomeDirectory() stringByAppendingPathComponent:@"Library/Preferences/CrashAnalyzer/Cases"] copy];return _directory;}
 + (NSDictionary*)evidenceForReport:(NSDictionary*)r{NSString*k=Key(r),*e=Evidence(r);if(!k.length||!e.length)return nil;return @{ @"key":k,@"evidence":e};}
 - (NSArray*)allCases{NSArray*fs=[[NSFileManager defaultManager]contentsOfDirectoryAtPath:self.directory error:nil];NSMutableArray*out=[NSMutableArray array];for(NSString*f in fs)if([f.pathExtension isEqualToString:@"json"]){NSData*d=[NSData dataWithContentsOfFile:[self.directory stringByAppendingPathComponent:f]];id x=d?[NSJSONSerialization JSONObjectWithData:d options:0 error:nil]:nil;if([x isKindOfClass:NSDictionary.class]&&[x[@"answer"] isKindOfClass:NSString.class])[out addObject:x];}return out;}
 - (NSDictionary*)matchingCaseForReport:(NSDictionary*)r{NSDictionary*e=[CACaseStore evidenceForReport:r];if(!e)return nil;for(NSDictionary*c in self.allCases)if(![c[@"rejected"] boolValue]&&[c[@"key"] isEqual:e[@"key"]]&&[e[@"evidence"] rangeOfString:c[@"evidence"]].location!=NSNotFound)return c;return nil;}
