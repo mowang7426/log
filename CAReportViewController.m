@@ -165,10 +165,21 @@
 }
 - (void)analyzeWithAI:(PSSpecifier *)specifier {
     (void)specifier;
-    UIAlertController *loading=[UIAlertController alertControllerWithTitle:@"AI 分析中" message:@"正在发送日志并等待模型响应，请稍候…" preferredStyle:UIAlertControllerStyleAlert];
+    NSDate *started=[NSDate date];
+    __block BOOL cancelled=NO;
+    __block NSTimer *timer=nil;
+    UIAlertController *loading=[UIAlertController alertControllerWithTitle:@"AI 分析中" message:@"准备请求…\n阶段：准备数据" preferredStyle:UIAlertControllerStyleAlert];
+    [loading addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:^(UIAlertAction *a){ cancelled=YES; [timer invalidate]; }]];
     [self presentViewController:loading animated:YES completion:nil];
+    timer=[NSTimer scheduledTimerWithTimeInterval:1.0 repeats:YES block:^(NSTimer *t){
+        if (cancelled) return;
+        NSTimeInterval elapsed=[[NSDate date] timeIntervalSinceDate:started];
+        loading.message=[NSString stringWithFormat:@"已用时 %.0f 秒\n阶段：等待模型响应\n网络请求仍在进行，请勿重复点击",elapsed];
+    }];
     BOOL include=[[NSUserDefaults standardUserDefaults] boolForKey:@"CAAIIncludeSource"];
     [[CAAIService shared] analyzeReport:_report includeSource:include completion:^(NSString *result,NSError *error){
+        [timer invalidate];
+        if (cancelled) return;
         [loading dismissViewControllerAnimated:YES completion:^{
             NSString *title=error ? @"AI 分析失败" : @"AI 分析结果";
             NSString *text=error.localizedDescription ?: result ?: @"模型没有返回结果。";
