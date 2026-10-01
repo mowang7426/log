@@ -2,6 +2,8 @@
 @class PSSpecifier;
 @interface CAAIConfigController : PSListController
 @end
+@interface CAAIModelPickerController : PSListController
+@end
 
 @interface CAAIService : NSObject
 + (instancetype)shared;

@@ -32,7 +32,7 @@ static NSString * CAModelsURL(NSString *raw) {
         [endpoint setProperty:@"https://api.openai.com/v1/chat/completions" forKey:@"defaultValue"]; [rows addObject:endpoint];
         PSSpecifier *fetch=[PSSpecifier preferenceSpecifierNamed:@"获取模型列表" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil]; fetch.buttonAction=@selector(fetchModels:); [rows addObject:fetch];
         if (models.count) {
-            PSSpecifier *picker=[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"可选模型：%@",[models componentsJoinedByString:@"、"]] target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil];
+            PSSpecifier *picker=[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"可选模型（%lu 个）",(unsigned long)models.count] target:nil set:nil get:nil detail:[CAAIModelPickerController class] cell:PSLinkCell edit:nil];
             [rows addObject:picker];
         }
         PSSpecifier *manual=[PSSpecifier preferenceSpecifierNamed:@"模型名称（也可手动填写）" target:self set:@selector(setModel:specifier:) get:@selector(model:) detail:nil cell:PSEditTextCell edit:nil]; [manual setProperty:@"deepseek-ai/DeepSeek-V4-Pro" forKey:@"placeholder"]; [rows addObject:manual];
@@ -69,7 +69,29 @@ static NSString * CAModelsURL(NSString *raw) {
 - (void)testConnection:(PSSpecifier *)s { (void)s; UIAlertController *w=[UIAlertController alertControllerWithTitle:@"测试连接" message:@"发送最小测试请求…" preferredStyle:UIAlertControllerStyleAlert]; [self presentViewController:w animated:YES completion:nil]; [[CAAIService shared] testConnection:^(BOOL ok,NSString *message){ [w dismissViewControllerAnimated:YES completion:^{ UIAlertController *a=[UIAlertController alertControllerWithTitle:(ok?@"连接成功":@"连接失败") message:message preferredStyle:UIAlertControllerStyleAlert]; [a addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleCancel handler:nil]]; [self presentViewController:a animated:YES completion:nil]; }]; }]; }
 @end
 
-@implementation CAAIService
+@implementation CAAIModelPickerController
+- (id)specifiers {
+    if (!_specifiers) {
+        NSMutableArray *rows=[NSMutableArray array];
+        NSArray *models=[[NSUserDefaults standardUserDefaults] arrayForKey:kModels] ?: @[];
+        for (NSString *model in models) {
+            PSSpecifier *row=[PSSpecifier preferenceSpecifierNamed:model target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
+            [row setProperty:model forKey:@"modelValue"];
+            row.buttonAction=@selector(selectModel:);
+            [rows addObject:row];
+        }
+        if (!models.count) [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"暂无模型，请返回后重新获取" target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
+        _specifiers=[rows mutableCopy];
+    }
+    return _specifiers;
+}
+- (void)selectModel:(PSSpecifier *)specifier {
+    NSString *model=[specifier propertyForKey:@"modelValue"];
+    if (model.length) [[NSUserDefaults standardUserDefaults] setObject:model forKey:kModel];
+    [self.navigationController popViewControllerAnimated:YES];
+}
+@end
+
 + (instancetype)shared { static CAAIService *s; static dispatch_once_t once; dispatch_once(&once,^{s=[self new];}); return s; }
 - (NSMutableURLRequest *)requestTo:(NSString *)url method:(NSString *)method body:(NSDictionary *)body {
     NSURL *u=[NSURL URLWithString:url]; if(!u)return nil; NSMutableURLRequest *q=[NSMutableURLRequest requestWithURL:u cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:45]; q.HTTPMethod=method;
