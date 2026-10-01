@@ -90,11 +90,10 @@ static NSString * CAModelsURL(NSString *raw) {
     if (model.length) [[NSUserDefaults standardUserDefaults] setObject:model forKey:kModel];
     [self.navigationController popViewControllerAnimated:YES];
 }
-@end
-
+@implementation CAAIService
 + (instancetype)shared { static CAAIService *s; static dispatch_once_t once; dispatch_once(&once,^{s=[self new];}); return s; }
 - (NSMutableURLRequest *)requestTo:(NSString *)url method:(NSString *)method body:(NSDictionary *)body {
-    NSURL *u=[NSURL URLWithString:url]; if(!u)return nil; NSMutableURLRequest *q=[NSMutableURLRequest requestWithURL:u cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:45]; q.HTTPMethod=method;
+    NSURL *u=[NSURL URLWithString:url]; if(!u)return nil; NSMutableURLRequest *q=[NSMutableURLRequest requestWithURL:u cachePolicy:NSURLRequestReloadIgnoringLocalCacheData timeoutInterval:180]; q.HTTPMethod=method;
     NSString *key=[[NSUserDefaults standardUserDefaults] stringForKey:kKey]; if(key.length)[q setValue:[NSString stringWithFormat:@"Bearer %@",key] forHTTPHeaderField:@"Authorization"];
     if(body){q.HTTPBody=[NSJSONSerialization dataWithJSONObject:body options:0 error:nil];[q setValue:@"application/json" forHTTPHeaderField:@"Content-Type"];} return q;
 }
@@ -110,7 +109,14 @@ static NSString * CAModelsURL(NSString *raw) {
 }
 - (void)analyzeReport:(NSDictionary *)report includeSource:(BOOL)includeSource completion:(void (^)(NSString *,NSError *))completion {
     NSUserDefaults *d=[NSUserDefaults standardUserDefaults]; NSString *model=[d stringForKey:kModel] ?: @""; if(!model.length){if(completion)completion(nil,[NSError errorWithDomain:@"CAAI" code:1 userInfo:@{NSLocalizedDescriptionKey:@"请先选择或填写模型名称。"}]);return;}
-    NSMutableDictionary *p=[NSMutableDictionary dictionaryWithDictionary:report ?: @{}]; NSString *path=p[@"path"]; [p removeObjectForKey:@"path"]; if(includeSource&&path.length){NSString *src=[NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];if(src)p[@"source_file"]=src;}
+    NSMutableDictionary *p=[NSMutableDictionary dictionaryWithDictionary:report ?: @{}]; NSString *path=p[@"path"]; [p removeObjectForKey:@"path"];
+    if (!includeSource) {
+        [p removeObjectForKey:@"threads"];
+        [p removeObjectForKey:@"usedImages"];
+        [p removeObjectForKey:@"sharedCache"];
+        [p removeObjectForKey:@"instructionByteStream"];
+    }
+    if(includeSource&&path.length){NSString *src=[NSString stringWithContentsOfFile:path encoding:NSUTF8StringEncoding error:nil];if(src)p[@"source_file"]=src;}
     NSData *jd=[NSJSONSerialization dataWithJSONObject:p options:0 error:nil]; NSString *prompt=[d stringForKey:kPrompt] ?: @"分析 iOS IPS 日志，提供证据和排查步骤"; NSString *content=[NSString stringWithFormat:@"%@\n\n日志：%@",prompt,jd?[[NSString alloc]initWithData:jd encoding:NSUTF8StringEncoding]:p]; NSDictionary *body=@{@"model":model,@"messages":@[@{@"role":@"user",@"content":content}],@"temperature":@0.2}; NSMutableURLRequest *q=[self requestTo:CAChatURL([d stringForKey:kEndpoint] ?: @"") method:@"POST" body:body]; if(!q){if(completion)completion(nil,[NSError errorWithDomain:@"CAAI" code:2 userInfo:@{NSLocalizedDescriptionKey:@"接口地址无效。"}]);return;}
     [[[NSURLSession sharedSession] dataTaskWithRequest:q completionHandler:^(NSData *data,NSURLResponse *response,NSError *error){NSDictionary *o=data?[NSJSONSerialization JSONObjectWithData:data options:0 error:nil]:nil;NSInteger status=[(NSHTTPURLResponse *)response statusCode];NSString *text=o[@"choices"][0][@"message"][@"content"];NSError *e=error;if(!text.length&&!e)e=[NSError errorWithDomain:@"CAAI" code:status userInfo:@{NSLocalizedDescriptionKey:o[@"error"][@"message"] ?: [NSString stringWithFormat:@"HTTP %ld",(long)status]}];dispatch_async(dispatch_get_main_queue(),^{if(completion)completion(text,e);});}]resume];
 }
