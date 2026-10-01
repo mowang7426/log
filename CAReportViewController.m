@@ -150,19 +150,7 @@
 - (void)viewDidLoad { [super viewDidLoad]; self.title=_report[@"procName"] ?: _report[@"app_name"] ?: @"日志详情"; }
 @end
 
-@interface CAReportSourceController ()
-@property(nonatomic,strong) NSString *sourcePath;
-@property(nonatomic,strong) NSString *sourceText;
-@end
 @implementation CAReportSourceController
-- (void)setSpecifier:(PSSpecifier *)specifier {
-    [super setSpecifier:specifier];
-    _specifiers=nil;
-    _sourcePath=[[specifier propertyForKey:@"reportPath"] copy];
-    NSData *data=[NSData dataWithContentsOfFile:_sourcePath options:0 error:nil];
-    _sourceText=data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : @"无法读取源文件。请确认文件仍存在且具有访问权限。";
-    self.title=_sourcePath.lastPathComponent ?: @"源文件";
-}
 - (instancetype)initWithSpecifier:(PSSpecifier *)specifier {
     self=[super init];
     if (self) self.specifier=specifier;
@@ -170,35 +158,42 @@
 }
 - (id)specifiers {
     if (!_specifiers) {
+        NSString *path=[self.specifier propertyForKey:@"reportPath"];
+        NSData *data=[NSData dataWithContentsOfFile:path options:0 error:nil];
+        NSString *text=data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : @"无法读取源文件。";
         NSMutableArray *rows=[NSMutableArray array];
-        PSSpecifier *copy=[PSSpecifier preferenceSpecifierNamed:@"复制全部源文件" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
+        PSSpecifier *copy=[PSSpecifier preferenceSpecifierNamed:@"复制源文件" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
         copy.buttonAction=@selector(copySource);
         [rows addObject:copy];
         PSSpecifier *share=[PSSpecifier preferenceSpecifierNamed:@"分享源文件" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
         share.buttonAction=@selector(shareSource);
         [rows addObject:share];
-        NSString *text=_sourceText ?: @"源文件路径未传入";
-        const NSUInteger chunk=120;
-        for (NSUInteger i=0; i<text.length; i+=chunk) {
-            NSUInteger n=MIN(chunk,text.length-i);
-            NSString *part=[text substringWithRange:NSMakeRange(i,n)];
-            PSSpecifier *line=[PSSpecifier preferenceSpecifierNamed:part target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil];
-            [line setProperty:@YES forKey:@"multilineTitle"];
-            [rows addObject:line];
+        NSArray *lines=[text componentsSeparatedByString:@"\n"];
+        for (NSString *lineText in lines) {
+            if (!lineText.length) { [rows addObject:[PSSpecifier preferenceSpecifierNamed:@" " target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]]; continue; }
+            for (NSUInteger i=0; i<lineText.length; i+=96) {
+                NSUInteger n=MIN((NSUInteger)96,lineText.length-i);
+                NSString *part=[lineText substringWithRange:NSMakeRange(i,n)];
+                [rows addObject:[PSSpecifier preferenceSpecifierNamed:part target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
+            }
         }
-        _specifiers=rows;
+        _specifiers=[rows mutableCopy];
+        self.title=path.lastPathComponent ?: @"源文件";
     }
     return _specifiers;
 }
-- (void)viewDidLoad { [super viewDidLoad]; self.title=_sourcePath.lastPathComponent ?: @"源文件"; }
-- (void)copySource { [UIPasteboard generalPasteboard].string=_sourceText ?: @""; }
+- (void)copySource {
+    NSString *path=[self.specifier propertyForKey:@"reportPath"];
+    NSData *data=[NSData dataWithContentsOfFile:path options:0 error:nil];
+    [UIPasteboard generalPasteboard].string=data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : @"";
+}
 - (void)shareSource {
-    if (!_sourcePath.length) return;
-    NSString *dst=[NSTemporaryDirectory() stringByAppendingPathComponent:_sourcePath.lastPathComponent ?: @"report.ips"];
+    NSString *path=[self.specifier propertyForKey:@"reportPath"];
+    if (!path.length) return;
+    NSString *dst=[NSTemporaryDirectory() stringByAppendingPathComponent:path.lastPathComponent ?: @"report.ips"];
     [[NSFileManager defaultManager] removeItemAtPath:dst error:nil];
-    if (![[NSFileManager defaultManager] copyItemAtPath:_sourcePath toPath:dst error:nil]) return;
+    if (![[NSFileManager defaultManager] copyItemAtPath:path toPath:dst error:nil]) return;
     UIActivityViewController *vc=[[UIActivityViewController alloc] initWithActivityItems:@[[NSURL fileURLWithPath:dst]] applicationActivities:nil];
-    vc.popoverPresentationController.barButtonItem=self.navigationItem.rightBarButtonItem;
     [self presentViewController:vc animated:YES completion:nil];
 }
 @end
