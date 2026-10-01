@@ -1,4 +1,5 @@
 #import "CALogStore.h"
+#import "CACaseStore.h"
 #import <CommonCrypto/CommonDigest.h>
 
 // Canonical, length-delimited strings avoid dictionary-order and separator collisions.
@@ -353,6 +354,8 @@ static NSString * const CAUnknown = @"其他";
     // Existing list/detail controllers still receive an NSString in report["diagnosis"].
     NSString *ai=cached[@"aiDiagnosis"];
     if (ai.length) return [NSString stringWithFormat:@"%@\n\n【缓存 AI 分析（需核实）】\n%@",local[@"summary"],ai];
+    NSDictionary *entry=[[CACaseStore sharedStore] matchingCaseForReport:r];
+    if (entry) return [NSString stringWithFormat:@"%@\n\n【本地历史案例：%@，本次根因仍需验证】\n%@",local[@"summary"],[entry[@"confirmed"] boolValue] ? @"含用户验证记录" : @"AI 未验证参考",entry[@"answer"]];
     return local[@"summary"];
 }
 - (NSArray<NSDictionary *> *)reportsForCategory:(NSString *)category {

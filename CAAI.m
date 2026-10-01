@@ -1,4 +1,5 @@
 #import "CAAI.h"
+#import "CACaseStore.h"
 #import "CALogStore.h"
 #import <CommonCrypto/CommonDigest.h>
 #import <Preferences/PSSpecifier.h>
@@ -150,7 +151,10 @@ static NSString * CAModelsURL(NSString *raw) {
             e=[NSError errorWithDomain:@"CAAI" code:status userInfo:@{NSLocalizedDescriptionKey:detail}];
         }
         if (error && !error.localizedDescription.length) e=[NSError errorWithDomain:@"CAAI" code:-1 userInfo:@{NSLocalizedDescriptionKey:@"请求未收到服务器响应，请检查网络、接口地址和服务商状态。"}];
-        if (!e && text.length) [[CALogStore sharedStore] saveAnalysisCache:@{@"aiDiagnosis":text,@"localDiagnosis":[[CALogStore sharedStore] localAnalysisForReport:report]} forFingerprint:fingerprint];
+        if (!e && text.length) {
+            [[CALogStore sharedStore] saveAnalysisCache:@{@"aiDiagnosis":text,@"localDiagnosis":[[CALogStore sharedStore] localAnalysisForReport:report]} forFingerprint:fingerprint];
+            [[CACaseStore sharedStore] saveUnverifiedAnswer:text forReport:report];
+        }
         dispatch_async(dispatch_get_main_queue(), ^{ if (completion) completion(text,e); });
     }] resume];
 }
