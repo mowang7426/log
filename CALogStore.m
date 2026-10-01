@@ -24,12 +24,42 @@ static NSString * const CAUnknown = @"其他";
     return paths;
 }
 
-- (NSDictionary *)reportAtPath:(NSString *)path {
+- (NSDictionary *)normalizedReport:(NSDictionary *)report {
+    NSMutableDictionary *r=[report mutableCopy];
+    NSDictionary *bundle=[report[@"bundleInfo"] isKindOfClass:[NSDictionary class]] ? report[@"bundleInfo"] : @{};
+    NSDictionary *os=[report[@"osVersion"] isKindOfClass:[NSDictionary class]] ? report[@"osVersion"] : @{};
+    NSDictionary *ex=[report[@"exception"] isKindOfClass:[NSDictionary class]] ? report[@"exception"] : @{};
+    NSDictionary *term=[report[@"termination"] isKindOfClass:[NSDictionary class]] ? report[@"termination"] : @{};
+    id process=report[@"procName"] ?: report[@"processName"] ?: report[@"app_name"] ?: report[@"name"];
+    id bundleID=report[@"bundleID"] ?: report[@"bundleIdentifier"] ?: bundle[@"CFBundleIdentifier"];
+    id pid=report[@"pid"] ?: report[@"processID"] ?: report[@"process_id"];
+    id system=report[@"systemVersion"] ?: report[@"os_version"] ?: os[@"train"];
+    id exceptionType=report[@"exceptionType"] ?: ex[@"type"];
+    id signal=report[@"signal"] ?: ex[@"signal"];
+    id codes=report[@"codes"] ?: ex[@"codes"];
+    id subtype=report[@"subtype"] ?: ex[@"subtype"];
+    id address=report[@"address"] ?: ex[@"address"];
+    if (process) r[@"normalizedProcessName"]=process;
+    if (bundleID) r[@"normalizedBundleID"]=bundleID;
+    if (pid) r[@"normalizedPID"]=pid;
+    if (system) r[@"normalizedSystemVersion"]=system;
+    if (exceptionType) r[@"normalizedExceptionType"]=exceptionType;
+    if (signal) r[@"normalizedSignal"]=signal;
+    if (codes) r[@"normalizedCodes"]=codes;
+    if (subtype) r[@"normalizedSubtype"]=subtype;
+    if (address) r[@"normalizedAddress"]=address;
+    if (report[@"faultingThread"]) r[@"normalizedFaultingThread"]=report[@"faultingThread"];
+    if (term.count) r[@"normalizedTermination"]=term;
+    r[@"normalizedThreadCount"]=@([report[@"threads"] isKindOfClass:[NSArray class]] ? [report[@"threads"] count] : 0);
+    r[@"normalizedImageCount"]=@([report[@"usedImages"] isKindOfClass:[NSArray class]] ? [report[@"usedImages"] count] : 0);
+    return r;
+}
+
     if (![path isKindOfClass:[NSString class]] || !path.length) return nil;
     NSData *data=[NSData dataWithContentsOfFile:path options:0 error:nil];
     if (!data) return nil;
     NSDictionary *parsed=[self parse:data];
-    NSMutableDictionary *report=parsed ? [parsed mutableCopy] : [NSMutableDictionary dictionary];
+    NSMutableDictionary *report=parsed ? [[self normalizedReport:parsed] mutableCopy] : [NSMutableDictionary dictionary];
     report[@"path"]=path;
     report[@"fileName"]=path.lastPathComponent;
     report[@"category"]=[self categoryForReport:report];
@@ -43,7 +73,7 @@ static NSString * const CAUnknown = @"其他";
         NSData *data=[NSData dataWithContentsOfFile:path options:0 error:nil];
         if (!data) continue;
         NSDictionary *d=[self parse:data];
-        NSMutableDictionary *r=d ? [d mutableCopy] : [NSMutableDictionary dictionary];
+        NSMutableDictionary *r=d ? [[self normalizedReport:d] mutableCopy] : [NSMutableDictionary dictionary];
         if (!d) {
             r[@"bug_type"]=@"unknown";
             r[@"parseError"]=@YES;

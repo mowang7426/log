@@ -112,22 +112,24 @@
         }
         [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"崩溃现场" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
         NSArray *scene=@[
-            @[@"触发方式",e[@"type"] ?: r[@"exceptionType"] ?: @"未知"],
-            @[@"异常信号",e[@"signal"] ?: @"未知"],
-            @[@"异常代码",e[@"codes"] ?: @"未知"],
-            @[@"故障线程",r[@"faultingThread"] ?: @"未知"]
+            @[@"触发方式",r[@"normalizedExceptionType"] ?: @"未知"],
+            @[@"异常信号",r[@"normalizedSignal"] ?: @"未知"],
+            @[@"异常代码",r[@"normalizedCodes"] ?: @"未知"],
+            @[@"故障线程",r[@"normalizedFaultingThread"] ?: @"未知"]
         ];
         for (NSArray *f in scene) [rows addObject:[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"%@\n%@",f[0],f[1]] target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
         [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"基本信息" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
         NSArray *basic=@[
-            @[@"进程",r[@"procName"] ?: r[@"app_name"] ?: @"未知"],
-            @[@"Bundle ID",r[@"bundleID"] ?: @"未知"],
-            @[@"进程 ID",r[@"pid"] ?: @"未知"],
+            @[@"进程",r[@"normalizedProcessName"] ?: @"未知"],
+            @[@"Bundle ID",r[@"normalizedBundleID"] ?: @"未知"],
+            @[@"进程 ID",r[@"normalizedPID"] ?: @"未知"],
             @[@"报告类型",r[@"bug_type"] ?: @"未知"],
             @[@"版本",r[@"app_version"] ?: r[@"build_version"] ?: @"未知"],
-            @[@"系统版本",r[@"os_version"] ?: @"未知"],
+            @[@"系统版本",r[@"normalizedSystemVersion"] ?: @"未知"],
             @[@"崩溃时间",r[@"timestamp"] ?: r[@"captureTime"] ?: @"未知"],
             @[@"事件 ID",r[@"incident_id"] ?: @"未知"],
+            @[@"线程数",r[@"normalizedThreadCount"] ?: @0],
+            @[@"镜像数",r[@"normalizedImageCount"] ?: @0],
             @[@"文件",r[@"fileName"] ?: @"未知"]
         ];
         for (NSArray *f in basic) [rows addObject:[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"%@\n%@",f[0],f[1]] target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
