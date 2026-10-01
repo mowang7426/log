@@ -20,16 +20,18 @@ static NSString * const kModels=@"CAAIFetchedModels";
         NSMutableArray *rows=[NSMutableArray array];
         NSUserDefaults *d=[NSUserDefaults standardUserDefaults];
         NSArray *models=[d arrayForKey:kModels] ?: @[];
-        [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"OpenAI-compatible 模型" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
+        [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"接口与认证" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
         PSSpecifier *endpoint=[PSSpecifier preferenceSpecifierNamed:@"接口地址" target:self set:@selector(setEndpoint:specifier:) get:@selector(endpoint:) detail:nil cell:PSEditTextCell edit:nil];
         [endpoint setProperty:@"https://api.openai.com/v1/chat/completions" forKey:@"defaultValue"]; [rows addObject:endpoint];
+        PSSpecifier *key=[PSSpecifier preferenceSpecifierNamed:@"API Key" target:self set:@selector(setKey:specifier:) get:@selector(key:) detail:nil cell:PSSecureEditTextCell edit:nil]; [rows addObject:key];
+        [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"模型选择" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
         PSSpecifier *fetch=[PSSpecifier preferenceSpecifierNamed:@"获取模型列表" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil]; fetch.buttonAction=@selector(fetchModels:); [rows addObject:fetch];
         if (models.count) {
             PSSpecifier *picker=[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"可选模型（%lu 个）",(unsigned long)models.count] target:nil set:nil get:nil detail:[CAAIModelPickerController class] cell:PSLinkCell edit:nil];
             [rows addObject:picker];
         }
-        PSSpecifier *manual=[PSSpecifier preferenceSpecifierNamed:@"模型名称（也可手动填写）" target:self set:@selector(setModel:specifier:) get:@selector(model:) detail:nil cell:PSEditTextCell edit:nil]; [manual setProperty:@"deepseek-ai/DeepSeek-V4-Pro" forKey:@"placeholder"]; [rows addObject:manual];
-        PSSpecifier *key=[PSSpecifier preferenceSpecifierNamed:@"API Key" target:self set:@selector(setKey:specifier:) get:@selector(key:) detail:nil cell:PSEditTextCell edit:nil]; [key setProperty:@YES forKey:@"isSecure"]; [key setProperty:@YES forKey:@"secureTextEntry"]; [rows addObject:key];
+        PSSpecifier *manual=[PSSpecifier preferenceSpecifierNamed:@"模型 ID" target:self set:@selector(setModel:specifier:) get:@selector(model:) detail:nil cell:PSEditTextCell edit:nil]; [manual setProperty:@"deepseek-ai/DeepSeek-V4-Pro" forKey:@"placeholder"]; [rows addObject:manual];
+
         PSSpecifier *prompt=[PSSpecifier preferenceSpecifierNamed:@"系统提示词" target:self set:@selector(setPrompt:specifier:) get:@selector(prompt:) detail:nil cell:PSEditTextCell edit:nil]; [prompt setProperty:@"分析 iOS IPS 日志，区分事实与推测，引用证据并给出排查步骤。" forKey:@"defaultValue"]; [rows addObject:prompt];
         PSSpecifier *test=[PSSpecifier preferenceSpecifierNamed:@"测试模型连接" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil]; test.buttonAction=@selector(testConnection:); [rows addObject:test];
         [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"隐私" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];

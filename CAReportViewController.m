@@ -13,6 +13,9 @@
 - (void)layoutSubviews {
     [super layoutSubviews];
     UILabel *label=self.titleLabel ?: self.textLabel;
+    label.font=[UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+    label.adjustsFontForContentSizeCategory=YES;
+    label.textColor=[UIColor labelColor];
     label.numberOfLines=0;
     label.lineBreakMode=NSLineBreakByWordWrapping;
     label.frame=CGRectMake(16,10,MAX(1,self.contentView.bounds.size.width-32),MAX(1,self.contentView.bounds.size.height-20));
@@ -113,9 +116,9 @@ static PSSpecifier *CAShortRow(NSString *text) {
             (![CACaseStore evidenceForReport:r] ? @"证据不足，未检索历史案例" :
             (match ? ([match[@"confirmed"] boolValue] ? @"匹配到有用户实测记录的历史 AI 参考（不保证本次根因）" : @"匹配到未验证 AI 参考（已关闭仅实测限制）") : @"没有符合当前采用设置的精确历史案例"));
         NSDictionary *human=[[CALogStore sharedStore] humanReadableAnalysisForReport:r];
-        PSSpecifier *version=[PSSpecifier preferenceSpecifierNamed:CAAnalysisVersionTitle target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
+        PSSpecifier *version=[PSSpecifier preferenceSpecifierNamed:@"本地分析" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
         [version setProperty:@"仅依据本地日志字段生成；不触发网络，根因仍需核对。" forKey:@"footerText"]; [rows addObject:version];
-        NSArray *readableGroups=@[@[@"为什么会退出",@[human[@"title"],human[@"reason"]]], @[@"判断依据",human[@"evidence"]], @[@"建议处理",human[@"actions"]], @[@"结论状态",@[human[@"confidence"],human[@"status"]]]];
+        NSArray *readableGroups=@[@[@"为什么会退出",@[human[@"title"],human[@"reason"]]], @[@"判断依据",human[@"evidence"]], @[@"建议处理",human[@"actions"]], @[@"结论状态",@[human[@"confidence"]]]];
         for (NSArray *groupData in readableGroups) {
             [rows addObject:[PSSpecifier preferenceSpecifierNamed:groupData[0] target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
             for (NSString *text in groupData[1]) [rows addObject:CAShortRow(text)];
@@ -126,41 +129,19 @@ static PSSpecifier *CAShortRow(NSString *text) {
             [rows addObject:CAShortRow([NSString stringWithFormat:@"本地案例来源：%@",match[@"source"] ?: @"未知"])];
             [rows addObject:CAShortRow([NSString stringWithFormat:@"用户实测：%@（非本次根因保证）",[match[@"confirmed"] boolValue] ? @"是" : @"否"])];
         }
-        [rows addObject:CAShortRow(@"仅本机匹配，不触发网络")];
         NSMutableString *full=[NSMutableString stringWithFormat:@"%@\n\n为什么会退出\n%@\n%@\n\n判断依据\n%@\n\n建议处理\n%@\n\n结论状态\n%@\n%@\n%@",CAAnalysisVersionTitle,human[@"title"],human[@"reason"],[human[@"evidence"] componentsJoinedByString:@"\n"],[human[@"actions"] componentsJoinedByString:@"\n"],human[@"confidence"],human[@"status"],caseFooter];
         if (match) [full appendFormat:@"\n案例 ID：%@\n用户实测记录：%@\n历史 AI 参考（非本次已确认根因）：%@",match[@"id"],match[@"testNote"] ?: @"无",match[@"answer"] ?: @"无"];
         [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"分析操作" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
         [full appendFormat:@"\n\n底层本地分析 / 既有参考\n%@",r[@"diagnosis"] ?: @"暂无诊断"];
         PSSpecifier *analysis=[PSSpecifier preferenceSpecifierNamed:@"查看完整本地分析" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
         [analysis setProperty:full forKey:@"analysisText"]; analysis.buttonAction=@selector(showAnalysis:); [rows addObject:analysis];
-        PSSpecifier *workbench=[PSSpecifier preferenceSpecifierNamed:@"第四版诊断工作台 · 证据 / 导出 / AI" target:nil set:nil get:nil detail:[CAWorkbenchController class] cell:PSLinkCell edit:nil];
+        PSSpecifier *workbench=[PSSpecifier preferenceSpecifierNamed:@"诊断工作台" target:nil set:nil get:nil detail:[CAWorkbenchController class] cell:PSLinkCell edit:nil];
         [workbench setProperty:r[@"path"] ?: @"" forKey:@"reportPath"]; [rows addObject:workbench];
         PSSpecifier *ai=[PSSpecifier preferenceSpecifierNamed:@"AI 分析此日志（预检）" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
         ai.buttonAction=@selector(analyzeWithAI:); [rows addObject:ai];
-        [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"崩溃现场" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
-        NSArray *scene=@[
-            @[@"触发方式",r[@"normalizedExceptionType"] ?: @"未知"],
-            @[@"异常信号",r[@"normalizedSignal"] ?: @"未知"],
-            @[@"异常代码",r[@"normalizedCodes"] ?: @"未知"],
-            @[@"故障线程",r[@"normalizedFaultingThread"] ?: @"未知"]
-        ];
-        for (NSArray *f in scene) [rows addObject:[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"%@：%@",f[0],f[1]] target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
-        [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"基本信息" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
-        NSArray *basic=@[
-            @[@"进程",r[@"normalizedProcessName"] ?: @"未知"],
-            @[@"Bundle ID",r[@"normalizedBundleID"] ?: @"未知"],
-            @[@"进程 ID",r[@"normalizedPID"] ?: @"未知"],
-            @[@"报告类型",r[@"bug_type"] ?: @"未知"],
-            @[@"版本",r[@"app_version"] ?: r[@"build_version"] ?: @"未知"],
-            @[@"系统版本",r[@"normalizedSystemVersion"] ?: @"未知"],
-            @[@"崩溃时间",r[@"timestamp"] ?: r[@"captureTime"] ?: @"未知"],
-            @[@"事件 ID",r[@"incident_id"] ?: @"未知"],
-            @[@"线程数",r[@"normalizedThreadCount"] ?: @0],
-            @[@"镜像数",r[@"normalizedImageCount"] ?: @0],
-            @[@"文件",r[@"fileName"] ?: @"未知"]
-        ];
-        for (NSArray *f in basic) [rows addObject:[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"%@：%@",f[0],f[1]] target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
-        PSSpecifier *more=[PSSpecifier preferenceSpecifierNamed:@"更多详情" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
+        [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"报告概览" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
+        for (NSArray *f in @[@[@"应用",r[@"normalizedProcessName"] ?: @"未提供"],@[@"时间",r[@"timestamp"] ?: r[@"captureTime"] ?: @"未提供"],@[@"类型",r[@"category"] ?: @"其他"]]) [rows addObject:CAShortRow([NSString stringWithFormat:@"%@：%@",f[0],f[1]])];
+        PSSpecifier *more=[PSSpecifier preferenceSpecifierNamed:@"技术详情" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
         more.buttonAction=@selector(showMoreDetails:);
         [rows addObject:more];
         PSSpecifier *source=[PSSpecifier preferenceSpecifierNamed:@"查看源文件" target:nil set:nil get:nil detail:[CAReportSourceController class] cell:PSLinkCell edit:nil];
@@ -173,11 +154,12 @@ static PSSpecifier *CAShortRow(NSString *text) {
 }
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
     PSSpecifier *s=[self specifierAtIndexPath:indexPath];
+    if ([s propertyForKey:@"cellClass"] != [CAWrappingTextCell class]) return [super tableView:tableView heightForRowAtIndexPath:indexPath];
     NSString *text=[s name] ?: @"";
-    if (text.length<28) return 52.0;
-    CGFloat width=MAX(240.0,tableView.bounds.size.width-42.0);
-    CGRect box=[text boundingRectWithSize:CGSizeMake(width,CGFLOAT_MAX) options:NSStringDrawingUsesLineFragmentOrigin attributes:@{NSFontAttributeName:[UIFont systemFontOfSize:17]} context:nil];
-    return MAX(52.0,ceil(box.size.height)+24.0);
+    CGFloat width=MAX(1.0,tableView.bounds.size.width-72.0);
+    UIFont *font=[UIFont preferredFontForTextStyle:UIFontTextStyleBody];
+    CGRect box=[text boundingRectWithSize:CGSizeMake(width,CGFLOAT_MAX) options:NSStringDrawingUsesLineFragmentOrigin|NSStringDrawingUsesFontLeading attributes:@{NSFontAttributeName:font} context:nil];
+    return MAX(52.0,ceil(box.size.height)+28.0);
 }
 - (void)showMoreDetails:(PSSpecifier *)specifier {
     (void)specifier;
@@ -186,6 +168,7 @@ static PSSpecifier *CAShortRow(NSString *text) {
     NSDictionary *t=[r[@"termination"] isKindOfClass:[NSDictionary class]] ? r[@"termination"] : @{};
     NSMutableArray *parts=[NSMutableArray array];
     void (^add)(NSString *,id)=^(NSString *label,id value){ if (value && value != [NSNull null]) [parts addObject:[NSString stringWithFormat:@"%@：%@",label,value]]; };
+    for (NSString *k in @[@"normalizedBundleID",@"normalizedPID",@"bug_type",@"app_version",@"normalizedSystemVersion",@"incident_id",@"normalizedThreadCount",@"normalizedImageCount",@"fileName"]) add(k,r[k]);
     add(@"原始异常类型",e[@"type"] ?: @"未知");
     add(@"原始信号",e[@"signal"] ?: @"未知");
     add(@"异常子类型",e[@"subtype"] ?: @"未知");
@@ -198,7 +181,7 @@ static PSSpecifier *CAShortRow(NSString *text) {
     add(@"运行状态",r[@"coalitionID"] ? [NSString stringWithFormat:@"coalition %@",r[@"coalitionID"]] : @"未知");
     add(@"原始故障线程",r[@"faultingThread"] ?: @"未知");
     NSString *text=[parts componentsJoinedByString:@"\n"];
-    UIAlertController *alert=[UIAlertController alertControllerWithTitle:@"更多详情" message:text preferredStyle:UIAlertControllerStyleAlert];
+    UIAlertController *alert=[UIAlertController alertControllerWithTitle:@"技术详情" message:text preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"复制" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a){ [UIPasteboard generalPasteboard].string=text; }]];
     [alert addAction:[UIAlertAction actionWithTitle:@"关闭" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];

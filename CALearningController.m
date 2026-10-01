@@ -6,8 +6,14 @@
 #import <Preferences/PSSpecifier.h>
 #import <Preferences/PSTableCell.h>
 
+static NSArray *CAIdentityFields(NSString *key) {
+    NSMutableArray *out=[NSMutableArray array]; NSUInteger offset=0;
+    while (offset<key.length) { NSRange colon=[key rangeOfString:@":" options:0 range:NSMakeRange(offset,key.length-offset)]; if(colon.location==NSNotFound)break; NSUInteger n=[[key substringWithRange:NSMakeRange(offset,colon.location-offset)] integerValue]; offset=colon.location+1; if(offset+n>key.length)break; [out addObject:[key substringWithRange:NSMakeRange(offset,n)]]; offset+=n+1; }
+    return out;
+}
+
 static NSString *CaseStatus(NSDictionary *c) {
-    return [c[@"rejected"] boolValue]?@"已拒绝":([c[@"confirmed"] boolValue]?@"有用户实测记录（非根因保证）":@"未验证 AI 参考");
+    return [c[@"rejected"] boolValue]?@"已拒绝":([c[@"confirmed"] boolValue]?@"有实测记录":@"未验证 AI 参考");
 }
 @implementation CALearningController {
     NSString *_query;
@@ -40,7 +46,7 @@ static NSString *CaseStatus(NSDictionary *c) {
         NSMutableArray *rows=[NSMutableArray array];
         PSSpecifier *intro=[PSSpecifier preferenceSpecifierNamed:@"本地学习与案例库" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
         [intro setProperty:@"仅在本机保存 AI 参考与用户实测记录，不是模型训练。默认只采用有实测记录的案例；未验证案例仍可查看。记录不保证本次根因。此页不保存账号、接口或凭据。" forKey:@"footerText"]; [rows addObject:intro];
-        NSArray *names=@[@"自动保存 AI 参考",@"使用历史相似案例",@"仅采用有用户实测记录的案例"];
+        NSArray *names=@[@"自动保存 AI 参考",@"使用历史相似案例",@"仅采用实测案例"];
         NSArray *keys=@[CAAutoSaveCases,CAUseHistoricalCases,CAOnlyValidatedCases];
         for(NSUInteger i=0;i<keys.count;i++) {
             PSSpecifier *s=[PSSpecifier preferenceSpecifierNamed:names[i] target:self set:@selector(setSetting:specifier:) get:@selector(setting:) detail:nil cell:PSSwitchCell edit:nil];
@@ -54,7 +60,8 @@ static NSString *CaseStatus(NSDictionary *c) {
         NSArray *visible=[CAWorkbench filterCases:[[CACaseStore sharedStore] allCases] query:_query status:_filter ?: @"all"];
         NSUInteger start=MIN(_page*100,visible.count), end=MIN(start+100,visible.count);
         for(NSDictionary *c in [visible subarrayWithRange:NSMakeRange(start,end-start)]) {
-            NSString *shortID=[c[@"id"] substringToIndex:12];
+            NSArray *identity=CAIdentityFields(c[@"key"]);
+            NSString *shortID=identity.count>1 ? identity[1] : @"历史案例";
             PSSpecifier *button=[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"%@ · %@",shortID,CaseStatus(c)] target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
             [button setProperty:c[@"id"] forKey:@"caseID"]; [button setProperty:c[@"createdAt"] forKey:@"footerText"];
             button.buttonAction=@selector(showCase:); [rows addObject:button];
