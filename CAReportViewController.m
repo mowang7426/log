@@ -5,11 +5,22 @@
 #import <Preferences/PSSpecifier.h>
 #import <Preferences/PSTableCell.h>
 
-// Preferences static cells are single-line. Keep full values in the local-analysis alert.
+// Detail text wraps to the available width; never truncate the stored value.
+@interface CAWrappingTextCell : PSTableCell
+@end
+@implementation CAWrappingTextCell
+- (void)layoutSubviews {
+    [super layoutSubviews];
+    UILabel *label=self.titleLabel ?: self.textLabel;
+    label.numberOfLines=0;
+    label.lineBreakMode=NSLineBreakByWordWrapping;
+    label.frame=CGRectMake(16,10,MAX(1,self.contentView.bounds.size.width-32),MAX(1,self.contentView.bounds.size.height-20));
+}
+@end
 static PSSpecifier *CAShortRow(NSString *text) {
-    NSString *line=[[text componentsSeparatedByCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] componentsJoinedByString:@" "];
-    if (line.length>30) line=[[line substringToIndex:30] stringByAppendingString:@"…"];
-    return [PSSpecifier preferenceSpecifierNamed:line target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil];
+    PSSpecifier *row=[PSSpecifier preferenceSpecifierNamed:text ?: @"" target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil];
+    [row setProperty:[CAWrappingTextCell class] forKey:@"cellClass"];
+    return row;
 }
 
 @implementation CAReportViewController
@@ -152,9 +163,18 @@ static PSSpecifier *CAShortRow(NSString *text) {
         PSSpecifier *source=[PSSpecifier preferenceSpecifierNamed:@"查看源文件" target:nil set:nil get:nil detail:[CAReportSourceController class] cell:PSLinkCell edit:nil];
         [source setProperty:r[@"path"] ?: @"" forKey:@"reportPath"];
         [rows addObject:source];
+        for (PSSpecifier *row in rows) if (row.cellType==PSStaticTextCell) [row setProperty:[CAWrappingTextCell class] forKey:@"cellClass"];
         _specifiers=[rows mutableCopy];
     }
     return _specifiers;
+}
+- (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
+    PSSpecifier *s=[self specifierAtIndexPath:indexPath];
+    NSString *text=[s name] ?: @"";
+    if (text.length<28) return 52.0;
+    CGFloat width=MAX(240.0,tableView.bounds.size.width-42.0);
+    CGRect box=[text boundingRectWithSize:CGSizeMake(width,CGFLOAT_MAX) options:NSStringDrawingUsesLineFragmentOrigin attributes:@{NSFontAttributeName:[UIFont systemFontOfSize:17]} context:nil];
+    return MAX(52.0,ceil(box.size.height)+24.0);
 }
 - (void)showMoreDetails:(PSSpecifier *)specifier {
     (void)specifier;
