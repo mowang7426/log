@@ -121,24 +121,45 @@
 - (void)viewDidLoad { [super viewDidLoad]; self.title=_report[@"procName"] ?: _report[@"app_name"] ?: @"日志详情"; }
 @end
 
-@implementation CAReportSourceController {
-    NSString *_source;
-}
+@interface CAReportSourceController () <UITextViewDelegate>
+@property(nonatomic,strong) NSString *sourcePath;
+@property(nonatomic,strong) UITextView *textView;
+@end
+@implementation CAReportSourceController
 - (instancetype)initWithSpecifier:(PSSpecifier *)specifier {
-    self=[super init];
-    if (self) self.specifier=specifier;
+    self=[super initWithNibName:nil bundle:nil];
+    if (self) {
+        _sourcePath=[[specifier propertyForKey:@"reportPath"] copy];
+        self.title=_sourcePath.lastPathComponent ?: @"源文件";
+    }
     return self;
 }
-- (id)specifiers {
-    if (!_specifiers) {
-        NSString *path=[self.specifier propertyForKey:@"reportPath"];
-        NSData *data=[NSData dataWithContentsOfFile:path options:0 error:nil];
-        _source=data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : @"无法读取源文件。请确认文件仍存在且插件具有访问权限。";
-        PSSpecifier *line=[PSSpecifier preferenceSpecifierNamed:_source target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil];
-        [line setProperty:@YES forKey:@"multilineTitle"];
-        _specifiers=[NSMutableArray arrayWithObject:line];
-        self.title=path.lastPathComponent ?: @"源文件";
-    }
-    return _specifiers;
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    self.view.backgroundColor=[UIColor systemBackgroundColor];
+    self.navigationItem.rightBarButtonItem=[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemAction target:self action:@selector(shareSource)];
+    self.navigationItem.leftBarButtonItem=[[UIBarButtonItem alloc] initWithBarButtonSystemItem:UIBarButtonSystemItemEdit target:self action:@selector(copySource)];
+    _textView=[[UITextView alloc] initWithFrame:self.view.bounds];
+    _textView.autoresizingMask=UIViewAutoresizingFlexibleWidth|UIViewAutoresizingFlexibleHeight;
+    _textView.editable=NO;
+    _textView.selectable=YES;
+    _textView.font=[UIFont monospacedSystemFontOfSize:12 weight:UIFontWeightRegular];
+    _textView.backgroundColor=[UIColor systemBackgroundColor];
+    [self.view addSubview:_textView];
+    NSData *data=[NSData dataWithContentsOfFile:_sourcePath options:0 error:nil];
+    NSString *text=data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : nil;
+    _textView.text=text ?: @"无法读取源文件。请确认文件仍存在且插件具有访问权限。";
+}
+- (void)copySource {
+    [UIPasteboard generalPasteboard].string=_textView.text ?: @"";
+    UIAlertController *a=[UIAlertController alertControllerWithTitle:@"已复制" message:@"源文件内容已复制到剪贴板。" preferredStyle:UIAlertControllerStyleAlert];
+    [a addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleDefault handler:nil]];
+    [self presentViewController:a animated:YES completion:nil];
+}
+- (void)shareSource {
+    NSURL *url=[NSURL fileURLWithPath:_sourcePath ?: @""];
+    UIActivityViewController *vc=[[UIActivityViewController alloc] initWithActivityItems:@[url] applicationActivities:nil];
+    vc.popoverPresentationController.barButtonItem=self.navigationItem.rightBarButtonItem;
+    [self presentViewController:vc animated:YES completion:nil];
 }
 @end

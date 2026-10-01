@@ -1,4 +1,5 @@
 #import <Preferences/PSListController.h>
+#import <UIKit/UIKit.h>
 @class PSSpecifier;
 @interface CAReportViewController : PSListController
 - (instancetype)initWithSpecifier:(PSSpecifier *)specifier;
@@ -18,6 +19,6 @@
 @interface CAReportDetailController : PSListController
 - (instancetype)initWithSpecifier:(PSSpecifier *)specifier;
 @end
-@interface CAReportSourceController : PSListController
+@interface CAReportSourceController : UIViewController
 - (instancetype)initWithSpecifier:(PSSpecifier *)specifier;
 @end
