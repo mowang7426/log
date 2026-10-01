@@ -110,10 +110,35 @@
             @[@"诊断",r[@"diagnosis"] ?: @"暂无诊断"],
             @[@"文件",r[@"fileName"] ?: @"未知"]
         ];
-        for (NSArray *f in fields) [rows addObject:[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"%@：%@",f[0],f[1]] target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
+                PSSpecifier *source=[PSSpecifier preferenceSpecifierNamed:@"查看源文件" target:nil set:nil get:nil detail:[CAReportSourceController class] cell:PSLinkCell edit:nil];
+                [source setProperty:r[@"path"] ?: @"" forKey:@"reportPath"];
+                [rows addObject:source];
+                for (NSArray *f in fields) [rows addObject:[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"%@：%@",f[0],f[1]] target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
         _specifiers=[rows mutableCopy];
     }
     return _specifiers;
 }
 - (void)viewDidLoad { [super viewDidLoad]; self.title=_report[@"procName"] ?: _report[@"app_name"] ?: @"日志详情"; }
+@end
+
+@implementation CAReportSourceController {
+    NSString *_source;
+}
+- (instancetype)initWithSpecifier:(PSSpecifier *)specifier {
+    self=[super init];
+    if (self) self.specifier=specifier;
+    return self;
+}
+- (id)specifiers {
+    if (!_specifiers) {
+        NSString *path=[self.specifier propertyForKey:@"reportPath"];
+        NSData *data=[NSData dataWithContentsOfFile:path options:0 error:nil];
+        _source=data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : @"无法读取源文件。请确认文件仍存在且插件具有访问权限。";
+        PSSpecifier *line=[PSSpecifier preferenceSpecifierNamed:_source target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil];
+        [line setProperty:@YES forKey:@"multilineTitle"];
+        _specifiers=[NSMutableArray arrayWithObject:line];
+        self.title=path.lastPathComponent ?: @"源文件";
+    }
+    return _specifiers;
+}
 @end
