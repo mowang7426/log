@@ -41,7 +41,7 @@
         PSSpecifier *refresh=[PSSpecifier preferenceSpecifierNamed:@"重新扫描" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
         refresh.buttonAction=@selector(reloadNow);
         [items addObject:refresh];
-        _specifiers=[items copy];
+        _specifiers=[items mutableCopy];
     }
     return _specifiers;
 }

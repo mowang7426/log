@@ -39,7 +39,7 @@
             }
             if (!reports.count) [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"没有匹配的日志" target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
         }
-        _specifiers=[rows copy];
+        _specifiers=[rows mutableCopy];
     }
     return _specifiers;
 }
@@ -95,7 +95,7 @@
             NSString *message=([path isKindOfClass:[NSString class]] && path.length)
                 ? [NSString stringWithFormat:@"无法读取日志，文件可能已删除或没有访问权限：%@",path]
                 : @"未收到所选日志的完整路径，请返回列表重新进入。";
-            _specifiers=@[[PSSpecifier preferenceSpecifierNamed:message target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
+            _specifiers=[NSMutableArray arrayWithObject:[PSSpecifier preferenceSpecifierNamed:message target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
             return _specifiers;
         }
         self.title=_report[@"procName"] ?: _report[@"app_name"] ?: @"日志详情";
@@ -111,7 +111,7 @@
             @[@"文件",r[@"fileName"] ?: @"未知"]
         ];
         for (NSArray *f in fields) [rows addObject:[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"%@：%@",f[0],f[1]] target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
-        _specifiers=[rows copy];
+        _specifiers=[rows mutableCopy];
     }
     return _specifiers;
 }
