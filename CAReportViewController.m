@@ -104,12 +104,10 @@
         NSDictionary *e=[r[@"exception"] isKindOfClass:[NSDictionary class]] ? r[@"exception"] : @{};
         [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"分析结论" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
         NSString *diagnosis=r[@"diagnosis"] ?: @"暂无诊断";
-        for (NSUInteger i=0; i<diagnosis.length; i+=42) {
-            NSUInteger n=MIN((NSUInteger)42,diagnosis.length-i);
-            NSString *part=[diagnosis substringWithRange:NSMakeRange(i,n)];
-            NSString *line=i==0 ? [NSString stringWithFormat:@"分析结论：%@",part] : [NSString stringWithFormat:@"             %@",part];
-            [rows addObject:[PSSpecifier preferenceSpecifierNamed:line target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
-        }
+        NSString *preview=diagnosis.length>48 ? [[diagnosis substringToIndex:48] stringByAppendingString:@"…"] : diagnosis;
+        PSSpecifier *analysis=[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"分析结论：%@",preview] target:nil set:nil get:nil detail:[CAAnalysisController class] cell:PSLinkCell edit:nil];
+        [analysis setProperty:diagnosis forKey:@"analysisText"];
+        [rows addObject:analysis];
         [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"崩溃现场" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
         NSArray *scene=@[
             @[@"触发方式",r[@"normalizedExceptionType"] ?: @"未知"],
@@ -197,5 +195,30 @@
     if (![[NSFileManager defaultManager] copyItemAtPath:path toPath:dst error:nil]) return;
     UIActivityViewController *vc=[[UIActivityViewController alloc] initWithActivityItems:@[[NSURL fileURLWithPath:dst]] applicationActivities:nil];
     [self presentViewController:vc animated:YES completion:nil];
+}
+@end
+
+@implementation CAAnalysisController
+- (instancetype)initWithSpecifier:(PSSpecifier *)specifier {
+    self=[super init];
+    if (self) self.specifier=specifier;
+    return self;
+}
+- (id)specifiers {
+    if (!_specifiers) {
+        NSString *text=[self.specifier propertyForKey:@"analysisText"] ?: @"暂无分析结论";
+        NSMutableArray *rows=[NSMutableArray array];
+        NSArray *lines=[text componentsSeparatedByString:@"\n"];
+        for (NSString *lineText in lines) {
+            NSString *line=lineText.length ? lineText : @" ";
+            for (NSUInteger i=0; i<line.length; i+=70) {
+                NSUInteger n=MIN((NSUInteger)70,line.length-i);
+                [rows addObject:[PSSpecifier preferenceSpecifierNamed:[line substringWithRange:NSMakeRange(i,n)] target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
+            }
+        }
+        _specifiers=[rows mutableCopy];
+        self.title=@"完整分析结论";
+    }
+    return _specifiers;
 }
 @end

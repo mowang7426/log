@@ -22,3 +22,6 @@
 @interface CAReportSourceController : PSListController
 - (instancetype)initWithSpecifier:(PSSpecifier *)specifier;
 @end
+@interface CAAnalysisController : PSListController
+- (instancetype)initWithSpecifier:(PSSpecifier *)specifier;
+@end
