@@ -92,7 +92,6 @@
         NSDictionary *e=[r[@"exception"] isKindOfClass:[NSDictionary class]] ? r[@"exception"] : @{};
         [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"分析结论" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
         NSString *diagnosis=r[@"diagnosis"] ?: @"暂无诊断";
-        NSString *preview=diagnosis.length>48 ? [[diagnosis substringToIndex:48] stringByAppendingString:@"…"] : diagnosis;
         PSSpecifier *analysis=[PSSpecifier preferenceSpecifierNamed:@"查看完整分析结论" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
         [analysis setProperty:diagnosis forKey:@"analysisText"];
         analysis.buttonAction=@selector(showAnalysis:);
