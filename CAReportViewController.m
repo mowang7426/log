@@ -44,17 +44,6 @@
     return _specifiers;
 }
 - (void)viewDidLoad { [super viewDidLoad]; self.title=[self reportCategory] ?: @"分类未绑定"; }
-
-    NSString *path=[specifier propertyForKey:@"reportPath"];
-    NSDictionary *report=[[CALogStore sharedStore] reportAtPath:path];
-    if (![report isKindOfClass:[NSDictionary class]]) return;
-    NSDictionary *exception=report[@"exception"];
-    NSString *exceptionType=[exception isKindOfClass:[NSDictionary class]] ? (exception[@"type"] ?: @"未知") : @"未知";
-    NSString *message=[NSString stringWithFormat:@"分类：%@\n时间：%@\n异常：%@\n\n%@\n\n文件：%@", report[@"category"] ?: @"其他", report[@"timestamp"] ?: @"未知", exceptionType, report[@"diagnosis"] ?: @"暂无诊断", report[@"fileName"] ?: @"未知"];
-    UIAlertController *alert=[UIAlertController alertControllerWithTitle:report[@"procName"] ?: report[@"app_name"] ?: @"日志详情" message:message preferredStyle:UIAlertControllerStyleAlert];
-    [alert addAction:[UIAlertAction actionWithTitle:@"关闭" style:UIAlertActionStyleCancel handler:nil]];
-    [self presentViewController:alert animated:YES completion:nil];
-}
 @end
 @implementation CACrashReportViewController
 - (NSString *)reportCategory { return @"崩溃"; }
