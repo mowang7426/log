@@ -1,9 +1,6 @@
 #import "CAAI.h"
 #import <Preferences/PSSpecifier.h>
 #import <Preferences/PSTableCell.h>
-#ifndef PSTextFieldCell
-#define PSTextFieldCell PSLinkCell
-#endif
 
 static NSString * const kCAAIEndpoint=@"CAAIEndpoint";
 static NSString * const kCAAIMode=@"CAAIMode";
@@ -16,10 +13,10 @@ static NSString * const kCAAIIncludeSource=@"CAAIIncludeSource";
     if (!_specifiers) {
         NSMutableArray *rows=[NSMutableArray array];
         [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"OpenAI-compatible 模型" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
-        PSSpecifier *endpoint=[PSSpecifier preferenceSpecifierNamed:@"接口地址" target:self set:@selector(setEndpoint:specifier:) get:@selector(endpoint:) detail:nil cell:PSTextFieldCell edit:nil]; [endpoint setProperty:@"https://api.openai.com/v1/chat/completions" forKey:@"defaultValue"]; [rows addObject:endpoint];
-        PSSpecifier *model=[PSSpecifier preferenceSpecifierNamed:@"模型名称" target:self set:@selector(setModel:specifier:) get:@selector(model:) detail:nil cell:PSTextFieldCell edit:nil]; [model setProperty:@"gpt-4o-mini" forKey:@"defaultValue"]; [rows addObject:model];
-        [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"API Key" target:self set:@selector(setKey:specifier:) get:@selector(key:) detail:nil cell:PSTextFieldCell edit:nil]];
-        PSSpecifier *prompt=[PSSpecifier preferenceSpecifierNamed:@"系统提示词" target:self set:@selector(setPrompt:specifier:) get:@selector(prompt:) detail:nil cell:PSTextFieldCell edit:nil]; [prompt setProperty:@"分析 iOS IPS 日志，区分事实与推测，引用证据并给出排查步骤。" forKey:@"defaultValue"]; [rows addObject:prompt];
+        PSSpecifier *endpoint=[PSSpecifier preferenceSpecifierNamed:@"接口地址" target:self set:@selector(setEndpoint:specifier:) get:@selector(endpoint:) detail:nil cell:PSEditTextCell edit:nil]; [endpoint setProperty:@"https://api.openai.com/v1/chat/completions" forKey:@"defaultValue"]; [rows addObject:endpoint];
+        PSSpecifier *model=[PSSpecifier preferenceSpecifierNamed:@"模型名称" target:self set:@selector(setModel:specifier:) get:@selector(model:) detail:nil cell:PSEditTextCell edit:nil]; [model setProperty:@"gpt-4o-mini" forKey:@"defaultValue"]; [rows addObject:model];
+        [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"API Key" target:self set:@selector(setKey:specifier:) get:@selector(key:) detail:nil cell:PSEditTextCell edit:nil]];
+        PSSpecifier *prompt=[PSSpecifier preferenceSpecifierNamed:@"系统提示词" target:self set:@selector(setPrompt:specifier:) get:@selector(prompt:) detail:nil cell:PSEditTextCell edit:nil]; [prompt setProperty:@"分析 iOS IPS 日志，区分事实与推测，引用证据并给出排查步骤。" forKey:@"defaultValue"]; [rows addObject:prompt];
         [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"隐私" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
         PSSpecifier *include=[PSSpecifier preferenceSpecifierNamed:@"发送完整源文件" target:self set:@selector(setIncludeSource:specifier:) get:@selector(includeSource:) detail:nil cell:PSSwitchCell edit:nil]; [include setProperty:@NO forKey:@"defaultValue"]; [rows addObject:include];
         [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"关闭时只发送结构化信息。开启后会发送完整 .ips。" target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
