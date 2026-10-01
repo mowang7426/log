@@ -123,6 +123,18 @@ static NSString * CAModelsURL(NSString *raw) {
     NSData *bodyData=[NSJSONSerialization dataWithJSONObject:body options:0 error:nil];
     if(bodyData.length>900000){if(completion)completion(nil,[NSError errorWithDomain:@"CAAI" code:3 userInfo:@{NSLocalizedDescriptionKey:[NSString stringWithFormat:@"请求内容过大（%lu 字节），请关闭“发送完整源文件”。",(unsigned long)bodyData.length]}]);return;}
     NSMutableURLRequest *q=[self requestTo:CAChatURL([d stringForKey:kEndpoint] ?: @"") method:@"POST" body:body]; if(!q){if(completion)completion(nil,[NSError errorWithDomain:@"CAAI" code:2 userInfo:@{NSLocalizedDescriptionKey:@"接口地址无效。"}]);return;}
-    [[[NSURLSession sharedSession] dataTaskWithRequest:q completionHandler:^(NSData *data,NSURLResponse *response,NSError *error){NSDictionary *o=data?[NSJSONSerialization JSONObjectWithData:data options:0 error:nil]:nil;NSInteger status=[(NSHTTPURLResponse *)response statusCode];NSString *text=o[@"choices"][0][@"message"][@"content"];NSError *e=error;if(!text.length&&!e){NSString *server=o[@"error"][@"message"];NSString *detail=server ?: [NSString stringWithFormat:@"HTTP %ld，响应 %lu 字节。",(long)status,(unsigned long)data.length];e=[NSError errorWithDomain:@"CAAI" code:status userInfo:@{NSLocalizedDescriptionKey:detail};}if(error && ![error.localizedDescription length])e=[NSError errorWithDomain:@"CAAI" code:-1 userInfo:@{NSLocalizedDescriptionKey:@"请求未收到服务器响应，请检查网络、接口地址和服务商状态。"}];dispatch_async(dispatch_get_main_queue(),^{if(completion)completion(text,e);});}]resume];
+    [[[NSURLSession sharedSession] dataTaskWithRequest:q completionHandler:^(NSData *data, NSURLResponse *response, NSError *error) {
+        NSDictionary *o=data ? [NSJSONSerialization JSONObjectWithData:data options:0 error:nil] : nil;
+        NSInteger status=[(NSHTTPURLResponse *)response statusCode];
+        NSString *text=o[@"choices"][0][@"message"][@"content"];
+        NSError *e=error;
+        if (!text.length && !e) {
+            NSString *server=o[@"error"][@"message"];
+            NSString *detail=server ?: [NSString stringWithFormat:@"HTTP %ld，响应 %lu 字节。",(long)status,(unsigned long)data.length];
+            e=[NSError errorWithDomain:@"CAAI" code:status userInfo:@{NSLocalizedDescriptionKey:detail}];
+        }
+        if (error && !error.localizedDescription.length) e=[NSError errorWithDomain:@"CAAI" code:-1 userInfo:@{NSLocalizedDescriptionKey:@"请求未收到服务器响应，请检查网络、接口地址和服务商状态。"}];
+        dispatch_async(dispatch_get_main_queue(), ^{ if (completion) completion(text,e); });
+    }] resume];
 }
 @end
