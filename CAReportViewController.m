@@ -127,13 +127,15 @@
 @end
 @implementation CAReportSourceController
 - (instancetype)initWithSpecifier:(PSSpecifier *)specifier {
-    self=[super initWithNibName:nil bundle:nil];
+    self=[super init];
     if (self) {
+        self.specifier=specifier;
         _sourcePath=[[specifier propertyForKey:@"reportPath"] copy];
         self.title=_sourcePath.lastPathComponent ?: @"源文件";
     }
     return self;
 }
+- (id)specifiers { return [NSMutableArray array]; }
 - (void)viewDidLoad {
     [super viewDidLoad];
     self.view.backgroundColor=[UIColor systemBackgroundColor];
@@ -157,7 +159,12 @@
     [self presentViewController:a animated:YES completion:nil];
 }
 - (void)shareSource {
-    NSURL *url=[NSURL fileURLWithPath:_sourcePath ?: @""];
+    if (!_sourcePath.length) return;
+    NSString *name=_sourcePath.lastPathComponent ?: @"report.ips";
+    NSString *sharePath=[NSTemporaryDirectory() stringByAppendingPathComponent:name];
+    [[NSFileManager defaultManager] removeItemAtPath:sharePath error:nil];
+    if (![[NSFileManager defaultManager] copyItemAtPath:_sourcePath toPath:sharePath error:nil]) return;
+    NSURL *url=[NSURL fileURLWithPath:sharePath];
     UIActivityViewController *vc=[[UIActivityViewController alloc] initWithActivityItems:@[url] applicationActivities:nil];
     vc.popoverPresentationController.barButtonItem=self.navigationItem.rightBarButtonItem;
     [self presentViewController:vc animated:YES completion:nil];
