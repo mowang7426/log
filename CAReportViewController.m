@@ -117,7 +117,7 @@
             @[@"异常代码",r[@"normalizedCodes"] ?: @"未知"],
             @[@"故障线程",r[@"normalizedFaultingThread"] ?: @"未知"]
         ];
-        for (NSArray *f in scene) [rows addObject:[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"%@\n%@",f[0],f[1]] target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
+        for (NSArray *f in scene) [rows addObject:[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"%@：%@",f[0],f[1]] target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
         [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"基本信息" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
         NSArray *basic=@[
             @[@"进程",r[@"normalizedProcessName"] ?: @"未知"],
@@ -132,7 +132,7 @@
             @[@"镜像数",r[@"normalizedImageCount"] ?: @0],
             @[@"文件",r[@"fileName"] ?: @"未知"]
         ];
-        for (NSArray *f in basic) [rows addObject:[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"%@\n%@",f[0],f[1]] target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
+        for (NSArray *f in basic) [rows addObject:[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"%@：%@",f[0],f[1]] target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
         [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"异常信息" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
         NSArray *exceptionInfo=@[
             @[@"原始异常类型",e[@"type"] ?: @"未知"],
@@ -141,7 +141,7 @@
             @[@"异常地址",e[@"address"] ?: @"未知"],
             @[@"终止信息",r[@"termination"] ?: @"未知"]
         ];
-        for (NSArray *f in exceptionInfo) [rows addObject:[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"%@\n%@",f[0],f[1]] target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
+        for (NSArray *f in exceptionInfo) [rows addObject:[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"%@：%@",f[0],f[1]] target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
         PSSpecifier *source=[PSSpecifier preferenceSpecifierNamed:@"查看源文件" target:nil set:nil get:nil detail:[CAReportSourceController class] cell:PSLinkCell edit:nil];
         [source setProperty:r[@"path"] ?: @"" forKey:@"reportPath"];
         [rows addObject:source];
