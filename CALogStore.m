@@ -54,6 +54,7 @@ static BOOL CAValidCache(NSDictionary *cache, NSString *fingerprint) {
         [cache[@"rootCause"] isKindOfClass:[NSString class]] && CAStringArray(cache[@"recommendations"]);
 }
 
+NSString * const CAAnalysisVersionTitle = @"本地智能分析 · 第三版";
 static NSString * const CAUnknown = @"其他";
 
 @implementation CALogStore
@@ -70,7 +71,7 @@ static NSString * const CAUnknown = @"其他";
     NSDirectoryEnumerator *enumerator=[fm enumeratorAtPath:root];
     NSString *relative=nil;
     while ((relative=[enumerator nextObject])) {
-        NSString *lower=[relative.lowercaseString copy];
+        NSString *lower=relative.lowercaseString;
         if ([lower hasSuffix:@".ips"] || [lower hasSuffix:@".ips.synced"]) {
             [paths addObject:[root stringByAppendingPathComponent:relative]];
         }
@@ -79,7 +80,7 @@ static NSString * const CAUnknown = @"其他";
 }
 
 - (NSDictionary *)normalizedReport:(NSDictionary *)report {
-    NSMutableDictionary *r=[report mutableCopy];
+    NSMutableDictionary *r=[[report mutableCopy] autorelease];
     NSDictionary *bundle=[report[@"bundleInfo"] isKindOfClass:[NSDictionary class]] ? report[@"bundleInfo"] : @{};
     NSDictionary *os=[report[@"osVersion"] isKindOfClass:[NSDictionary class]] ? report[@"osVersion"] : @{};
     NSDictionary *ex=[report[@"exception"] isKindOfClass:[NSDictionary class]] ? report[@"exception"] : @{};
@@ -114,7 +115,8 @@ static NSString * const CAUnknown = @"其他";
     NSData *data=[NSData dataWithContentsOfFile:path options:0 error:nil];
     if (!data) return nil;
     NSDictionary *parsed=[self parse:data];
-    NSMutableDictionary *report=parsed ? [[self normalizedReport:parsed] mutableCopy] : [NSMutableDictionary dictionary];
+    NSMutableDictionary *report=parsed ? [[[self normalizedReport:parsed] mutableCopy] autorelease] : [NSMutableDictionary dictionary];
+    if (!parsed) report[@"parseError"]=@YES;
     report[@"path"]=path;
     report[@"fileName"]=path.lastPathComponent;
     report[@"category"]=[self categoryForReport:report];
@@ -128,7 +130,7 @@ static NSString * const CAUnknown = @"其他";
         NSData *data=[NSData dataWithContentsOfFile:path options:0 error:nil];
         if (!data) continue;
         NSDictionary *d=[self parse:data];
-        NSMutableDictionary *r=d ? [[self normalizedReport:d] mutableCopy] : [NSMutableDictionary dictionary];
+        NSMutableDictionary *r=d ? [[[self normalizedReport:d] mutableCopy] autorelease] : [NSMutableDictionary dictionary];
         if (!d) {
             r[@"bug_type"]=@"unknown";
             r[@"parseError"]=@YES;
@@ -147,7 +149,7 @@ static NSString * const CAUnknown = @"其他";
     return out;
 }
 - (NSDictionary *)parse:(NSData *)data {
-    NSString *s=[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding];
+    NSString *s=[[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] autorelease];
     if (!s) return nil;
     NSArray *lines=[s componentsSeparatedByString:@"\n"];
     if (!lines.count) return nil;
@@ -257,7 +259,7 @@ static NSString * const CAUnknown = @"其他";
 - (BOOL)saveAnalysisCache:(NSDictionary *)cache forFingerprint:(NSString *)fingerprint {
     if (!CAValidFingerprint(fingerprint) || ![cache isKindOfClass:[NSDictionary class]]) return NO;
     @synchronized (self) {
-        NSMutableDictionary *entry=[[self analysisCacheForFingerprint:fingerprint] mutableCopy];
+        NSMutableDictionary *entry=[[[self analysisCacheForFingerprint:fingerprint] mutableCopy] autorelease];
         if (!entry) {
             NSDateFormatter *format=[NSDateFormatter new];
             format.locale=[[NSLocale alloc] initWithLocaleIdentifier:@"en_US_POSIX"];
@@ -278,6 +280,73 @@ static NSString * const CAUnknown = @"其他";
         NSString *path=[directory stringByAppendingPathComponent:[fingerprint stringByAppendingString:@".json"]];
         return [data writeToFile:path options:NSDataWritingAtomic error:nil];
     }
+}
+
+- (NSDictionary *)humanReadableAnalysisForReport:(NSDictionary *)report {
+    // Read structured fields only: filenames, stacks and AI prose are not causal evidence.
+    NSDictionary *r=[self normalizedReport:[report isKindOfClass:[NSDictionary class]] ? report : @{}];
+    NSString *bug=CAStableString(r[@"bug_type"]);
+    NSString *exception=[CAStableString(r[@"normalizedExceptionType"]) uppercaseString];
+    NSString *signal=[CAStableString(r[@"normalizedSignal"]) uppercaseString];
+    NSDictionary *term=[r[@"normalizedTermination"] isKindOfClass:[NSDictionary class]] ? r[@"normalizedTermination"] : @{};
+    NSString *terminationText=[CAStableString(term) lowercaseString];
+    BOOL unreadable=[r[@"parseError"] respondsToSelector:@selector(boolValue)] && [r[@"parseError"] boolValue];
+    BOOL jetsam=[bug isEqualToString:@"298"];
+    BOOL watchdog=r[@"watchdogTimeout"] && r[@"watchdogTimeout"] != [NSNull null];
+    watchdog=watchdog || [terminationText containsString:@"watchdog"] ||
+        [terminationText containsString:@"8badf00d"] || [CAStableString(term[@"code"]) isEqualToString:@"2343432205"];
+    BOOL panic=CAStableString(r[@"panicString"]).length>0;
+    BOOL killed=[signal isEqualToString:@"SIGKILL"] ||
+        ([[CAStableString(term[@"namespace"]) uppercaseString] isEqualToString:@"SIGNAL"] && [CAStableString(term[@"code"]) isEqualToString:@"9"]);
+    NSMutableArray *evidence=[NSMutableArray array];
+    for (NSString *key in @[@"bug_type", @"normalizedExceptionType", @"normalizedSignal", @"normalizedCodes", @"normalizedSubtype", @"normalizedAddress", @"normalizedFaultingThread", @"normalizedTermination", @"watchdogTimeout", @"panicString", @"largestProcess"]) {
+        NSString *value=CAStableString(r[key]);
+        if (value.length) [evidence addObject:[NSString stringWithFormat:@"事实：%@ = %@",key,value]];
+    }
+    NSString *title=@"暂时无法判断退出原因";
+    NSString *reason=@"未确认：现有字段不足以解释这次退出；报告编号和分类不能单独证明根因。";
+    NSString *confidence=@"证据不足；根因未确认";
+    NSArray *actions=@[@"先查看源文件并记录发生时间、操作和应用版本。", @"更新应用与系统；若反复出现，将完整日志交给应用开发者核对。"];
+    if (unreadable) {
+        [evidence addObject:@"事实：日志文件存在，但内容未成功解析。"];
+        reason=@"未确认：日志未成功解析，当前无法判断为何退出。";
+        actions=@[@"查看源文件确认是否完整；保留原文件，稍后重新读取。"];
+    } else if (jetsam) {
+        title=@"系统记录了内存资源终止事件";
+        reason=@"可能：系统为控制内存资源终止了某个进程；需核对被终止项，才能区分应用达到限制还是系统整体压力。不是已确认的内存泄漏。";
+        confidence=@"已识别事件类型；具体根因待核对";
+        [evidence addObject:@"事实：bug_type 298 是 Jetsam 事件类型标记，不代表某个应用一定泄漏或被终止。"];
+        if (r[@"largestProcess"]) [evidence addObject:@"未确认：largestProcess 只表示最大进程，不等于被终止进程。"];
+        actions=@[@"重新打开应用，记录退出前是否处理大文件或运行高负载任务。", @"更新应用；反复出现时提供完整日志，由开发者核对 processes 中的终止项、reason 和内存压力。"];
+    } else if ([exception isEqualToString:@"EXC_BAD_ACCESS"]) {
+        title=@"应用发生了内存访问异常";
+        reason=@"可能：程序访问了无效或不允许访问的内存；具体代码、插件或责任模块尚未确认，不代表设备内存容量不足。";
+        confidence=@"异常类型明确；责任模块未确认";
+        actions=@[@"更新应用并记录可重复触发的操作。", @"将异常地址和完整故障线程日志交给开发者核对；不要仅因日志出现某个插件就认定它有问题。"];
+    } else if ([exception isEqualToString:@"EXC_GUARD"]) {
+        title=@"应用触发了系统资源保护";
+        reason=@"可能：应用对受保护资源执行了不允许的操作；需核对 subtype、codes 和故障线程，才能确定具体资源及责任代码。";
+        confidence=@"异常类型明确；保护对象未确认";
+        actions=@[@"更新应用，记录退出前的操作并保留完整日志。", @"请开发者核对保护异常子类型与代码；不能只凭异常编号判断是文件、端口或某个插件导致。"];
+    } else if (watchdog) {
+        title=@"系统检测到响应超时线索";
+        reason=@"可能：应用在启动、恢复或退出等阶段未及时响应；超时阶段与阻塞原因需要进一步核对，不等于内存不足。";
+        confidence=@"存在超时线索；阻塞原因未确认";
+        actions=@[@"记录当时的操作，重新打开并更新应用。", @"反复出现时请开发者核对 termination 中的超时阶段、预算及主线程；不要凭终止代码直接确定根因。"];
+    } else if (panic || [bug isEqualToString:@"210"]) {
+        title=panic ? @"系统记录了异常重启线索" : @"报告属于异常重启类型";
+        reason=@"可能：系统发生了内核异常；仅凭报告类型不能判断是系统、驱动、外设还是硬件问题，也不能归咎于某个应用。";
+        confidence=panic ? @"存在 panic 内容；根因未确认" : @"仅有类型标记；根因未确认";
+        actions=@[@"保留完整 panic 日志，并记录是否重复出现及当时连接的外设。", @"更新系统；若持续重启，备份数据并联系技术支持检测，不要据此直接更换硬件。"];
+    } else if (killed) {
+        title=@"进程收到了强制终止信号";
+        reason=@"未确认：SIGKILL 说明进程被强制结束，但信号本身不说明是谁终止、为何终止，也不能证明是内存问题。";
+        confidence=@"终止信号明确；终止原因未知";
+        actions=@[@"记录发生时间，核对同一时间的其他日志。", @"请开发者结合 termination 的来源及 Jetsam、watchdog 记录检查终止原因。"];
+    }
+    if (!evidence.count) [evidence addObject:@"事实：没有可用于本地判断的异常或终止字段。"];
+    return @{@"title":title, @"reason":reason, @"evidence":evidence, @"actions":actions,
+             @"confidence":confidence, @"status":@"本次根因未确认；本地规则不替代实测验证"};
 }
 
 - (NSDictionary *)localAnalysisForReport:(NSDictionary *)report {

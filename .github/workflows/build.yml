@@ -20,6 +20,8 @@ jobs:
           /tmp/ca-case-tests
           clang -fno-objc-arc -fblocks -framework Foundation -framework Security CACaseStore.m CACaseStoreTests.m -o /tmp/ca-case-tests-mrc
           /tmp/ca-case-tests-mrc
+          clang -fno-objc-arc -fblocks -framework Foundation CALogStore.m CACaseStore.m CALogStoreTests.m -o /tmp/ca-human-tests
+          /tmp/ca-human-tests
 
       - name: Install dependencies
         run: |

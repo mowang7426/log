@@ -5,6 +5,13 @@
 #import <Preferences/PSSpecifier.h>
 #import <Preferences/PSTableCell.h>
 
+// Preferences static cells are single-line. Keep full values in the local-analysis alert.
+static PSSpecifier *CAShortRow(NSString *text) {
+    NSString *line=[[text componentsSeparatedByCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]] componentsJoinedByString:@" "];
+    if (line.length>30) line=[[line substringToIndex:30] stringByAppendingString:@"…"];
+    return [PSSpecifier preferenceSpecifierNamed:line target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil];
+}
+
 @implementation CAReportViewController
 
 // Resolve category when rendering, regardless of how Preferences constructs us.
@@ -93,18 +100,29 @@
         NSString *matchStatus=![cases settingEnabled:CAUseHistoricalCases] ? @"历史案例检索已关闭" :
             (![CACaseStore evidenceForReport:r] ? @"证据不足，未检索历史案例" :
             (match ? ([match[@"confirmed"] boolValue] ? @"匹配到有用户实测记录的历史 AI 参考（不保证本次根因）" : @"匹配到未验证 AI 参考（已关闭仅实测限制）") : @"没有符合当前采用设置的精确历史案例"));
-        PSSpecifier *local=[PSSpecifier preferenceSpecifierNamed:@"本地案例匹配状态" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
-        [local setProperty:[matchStatus stringByAppendingString:@"。本地检索不触发网络；手动 AI 按现有精确日志缓存/请求流程处理，不因历史案例匹配而跳过请求，也无自动云端回退。"] forKey:@"footerText"];
-        [rows addObject:local];
-        [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"分析结论" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
-        NSString *diagnosis=r[@"diagnosis"] ?: @"暂无诊断";
-        PSSpecifier *analysis=[PSSpecifier preferenceSpecifierNamed:@"查看完整分析结论" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
-        [analysis setProperty:diagnosis forKey:@"analysisText"];
-        analysis.buttonAction=@selector(showAnalysis:);
-        [rows addObject:analysis];
+        NSDictionary *human=[[CALogStore sharedStore] humanReadableAnalysisForReport:r];
+        PSSpecifier *version=[PSSpecifier preferenceSpecifierNamed:CAAnalysisVersionTitle target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
+        [version setProperty:@"仅依据本地日志字段生成；不触发网络，根因仍需核对。" forKey:@"footerText"]; [rows addObject:version];
+        NSArray *readableGroups=@[@[@"为什么会退出",@[human[@"title"],human[@"reason"]]], @[@"判断依据",human[@"evidence"]], @[@"建议处理",human[@"actions"]], @[@"结论状态",@[human[@"confidence"],human[@"status"]]]];
+        for (NSArray *groupData in readableGroups) {
+            [rows addObject:[PSSpecifier preferenceSpecifierNamed:groupData[0] target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
+            for (NSString *text in groupData[1]) [rows addObject:CAShortRow(text)];
+        }
+        NSString *caseFooter=match ? [NSString stringWithFormat:@"本地案例：%@；用户实测：%@。仅本机匹配，不触发网络；不证明本次根因。",match[@"source"] ?: @"本地案例库",[match[@"confirmed"] boolValue] ? @"是" : @"否"] : matchStatus;
+        [rows addObject:CAShortRow(matchStatus)];
+        if (match) {
+            [rows addObject:CAShortRow([NSString stringWithFormat:@"本地案例来源：%@",match[@"source"] ?: @"未知"])];
+            [rows addObject:CAShortRow([NSString stringWithFormat:@"用户实测：%@（非本次根因保证）",[match[@"confirmed"] boolValue] ? @"是" : @"否"])];
+        }
+        [rows addObject:CAShortRow(@"仅本机匹配，不触发网络")];
+        NSMutableString *full=[NSMutableString stringWithFormat:@"%@\n\n为什么会退出\n%@\n%@\n\n判断依据\n%@\n\n建议处理\n%@\n\n结论状态\n%@\n%@\n%@",CAAnalysisVersionTitle,human[@"title"],human[@"reason"],[human[@"evidence"] componentsJoinedByString:@"\n"],[human[@"actions"] componentsJoinedByString:@"\n"],human[@"confidence"],human[@"status"],caseFooter];
+        if (match) [full appendFormat:@"\n案例 ID：%@\n用户实测记录：%@\n历史 AI 参考（非本次已确认根因）：%@",match[@"id"],match[@"testNote"] ?: @"无",match[@"answer"] ?: @"无"];
+        [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"分析操作" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
+        [full appendFormat:@"\n\n底层本地分析 / 既有参考\n%@",r[@"diagnosis"] ?: @"暂无诊断"];
+        PSSpecifier *analysis=[PSSpecifier preferenceSpecifierNamed:@"查看完整本地分析" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
+        [analysis setProperty:full forKey:@"analysisText"]; analysis.buttonAction=@selector(showAnalysis:); [rows addObject:analysis];
         PSSpecifier *ai=[PSSpecifier preferenceSpecifierNamed:@"AI 分析此日志" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
-        ai.buttonAction=@selector(analyzeWithAI:);
-        [rows addObject:ai];
+        ai.buttonAction=@selector(analyzeWithAI:); [rows addObject:ai];
         [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"崩溃现场" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
         NSArray *scene=@[
             @[@"触发方式",r[@"normalizedExceptionType"] ?: @"未知"],
@@ -209,13 +227,13 @@
     if (!_specifiers) {
         NSString *path=[self.specifier propertyForKey:@"reportPath"];
         NSData *data=[NSData dataWithContentsOfFile:path options:0 error:nil];
-        NSString *text=data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : @"无法读取源文件。";
+        NSString *text=data ? [[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] autorelease] : @"无法读取源文件。";
         NSMutableArray *rows=[NSMutableArray array];
         PSSpecifier *copy=[PSSpecifier preferenceSpecifierNamed:@"复制源文件" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
-        copy.buttonAction=@selector(copySource);
+        copy.buttonAction=@selector(copySource:);
         [rows addObject:copy];
         PSSpecifier *share=[PSSpecifier preferenceSpecifierNamed:@"分享源文件" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
-        share.buttonAction=@selector(shareSource);
+        share.buttonAction=@selector(shareSource:);
         [rows addObject:share];
         NSArray *lines=[text componentsSeparatedByString:@"\n"];
         for (NSString *lineText in lines) {
@@ -231,18 +249,20 @@
     }
     return _specifiers;
 }
-- (void)copySource {
+- (void)copySource:(PSSpecifier *)specifier {
+    (void)specifier;
     NSString *path=[self.specifier propertyForKey:@"reportPath"];
     NSData *data=[NSData dataWithContentsOfFile:path options:0 error:nil];
-    [UIPasteboard generalPasteboard].string=data ? [[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] : @"";
+    [UIPasteboard generalPasteboard].string=data ? [[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] autorelease] : @"";
 }
-- (void)shareSource {
+- (void)shareSource:(PSSpecifier *)specifier {
+    (void)specifier;
     NSString *path=[self.specifier propertyForKey:@"reportPath"];
     if (!path.length) return;
     NSString *dst=[NSTemporaryDirectory() stringByAppendingPathComponent:path.lastPathComponent ?: @"report.ips"];
     [[NSFileManager defaultManager] removeItemAtPath:dst error:nil];
     if (![[NSFileManager defaultManager] copyItemAtPath:path toPath:dst error:nil]) return;
-    UIActivityViewController *vc=[[UIActivityViewController alloc] initWithActivityItems:@[[NSURL fileURLWithPath:dst]] applicationActivities:nil];
+    UIActivityViewController *vc=[[[UIActivityViewController alloc] initWithActivityItems:@[[NSURL fileURLWithPath:dst]] applicationActivities:nil] autorelease];
     [self presentViewController:vc animated:YES completion:nil];
 }
 @end

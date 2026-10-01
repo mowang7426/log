@@ -1,6 +1,12 @@
 #import <Foundation/Foundation.h>
 
+// Third-generation user-facing analysis label. Local-only; no network implication.
+FOUNDATION_EXPORT NSString * const CAAnalysisVersionTitle;
+
 @interface CALogStore : NSObject
+// JSON: title/reason/confidence/status strings, evidence/actions string arrays.
+// Describes observed event separately from possible causes; never confirms a root cause.
+- (NSDictionary *)humanReadableAnalysisForReport:(NSDictionary *)report;
 + (instancetype)sharedStore;
 - (NSArray<NSDictionary *> *)reports;
 - (NSDictionary *)reportAtPath:(NSString *)path;
