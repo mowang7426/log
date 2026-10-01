@@ -207,18 +207,19 @@
 - (id)specifiers {
     if (!_specifiers) {
         NSString *text=[self.specifier propertyForKey:@"analysisText"] ?: @"暂无分析结论";
-        NSMutableArray *rows=[NSMutableArray array];
-        NSArray *lines=[text componentsSeparatedByString:@"\n"];
-        for (NSString *lineText in lines) {
-            NSString *line=lineText.length ? lineText : @" ";
-            for (NSUInteger i=0; i<line.length; i+=70) {
-                NSUInteger n=MIN((NSUInteger)70,line.length-i);
-                [rows addObject:[PSSpecifier preferenceSpecifierNamed:[line substringWithRange:NSMakeRange(i,n)] target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
-            }
-        }
-        _specifiers=[rows mutableCopy];
+        PSSpecifier *open=[PSSpecifier preferenceSpecifierNamed:@"查看完整分析结论" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
+        [open setProperty:text forKey:@"analysisText"];
+        open.buttonAction=@selector(showAnalysis);
+        _specifiers=[NSMutableArray arrayWithObject:open];
         self.title=@"完整分析结论";
     }
     return _specifiers;
+}
+- (void)showAnalysis {
+    NSString *text=[self.specifier propertyForKey:@"analysisText"] ?: @"暂无分析结论";
+    UIAlertController *alert=[UIAlertController alertControllerWithTitle:@"完整分析结论" message:text preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"复制" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a){ [UIPasteboard generalPasteboard].string=text; }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"关闭" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
 }
 @end
