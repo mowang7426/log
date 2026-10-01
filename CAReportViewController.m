@@ -87,6 +87,7 @@
     [alert addAction:[UIAlertAction actionWithTitle:@"关闭" style:UIAlertActionStyleCancel handler:nil]];
     [self presentViewController:alert animated:YES completion:nil];
 }
+@end
 @implementation CACrashReportViewController
 - (instancetype)initWithSpecifier:(PSSpecifier *)specifier { return [super initWithCategory:@"崩溃"]; }
 @end
@@ -107,8 +108,9 @@
     NSDictionary *_report;
 }
 - (instancetype)initWithSpecifier:(PSSpecifier *)specifier {
-    self=[super initWithSpecifier:specifier];
+    self=[super init];
     if (self) {
+        self.specifier=specifier;
         NSString *file=[specifier name];
         for (NSDictionary *r in [[CALogStore sharedStore] reports]) {
             if ([r[@"fileName"] isEqualToString:file]) { _report=r; break; }
