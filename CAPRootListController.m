@@ -18,7 +18,13 @@
         for (NSString *category in categories) {
             NSUInteger count=0;
             for (NSDictionary *report in reports) if ([report[@"category"] isEqualToString:category]) count++;
-            PSSpecifier *row=[PSSpecifier preferenceSpecifierNamed:category target:self set:nil get:nil detail:[CAReportViewController class] cell:PSLinkCell edit:nil];
+            Class detailClass=Nil;
+            if ([category isEqualToString:@"崩溃"]) detailClass=[CACrashReportViewController class];
+            else if ([category isEqualToString:@"内存"]) detailClass=[CAMemoryReportViewController class];
+            else if ([category isEqualToString:@"重启"]) detailClass=[CARestartReportViewController class];
+            else if ([category isEqualToString:@"资源"]) detailClass=[CAResourceReportViewController class];
+            else detailClass=[CAOtherReportViewController class];
+            PSSpecifier *row=[PSSpecifier preferenceSpecifierNamed:category target:nil set:nil get:nil detail:detailClass cell:PSLinkCell edit:nil];
             [row setProperty:[NSString stringWithFormat:@"%lu 条日志",(unsigned long)count] forKey:@"footerText"];
             [row setProperty:category forKey:@"category"];
             [row setProperty:@YES forKey:@"isController"];

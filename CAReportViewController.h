@@ -4,3 +4,17 @@
 - (instancetype)initWithSpecifier:(PSSpecifier *)specifier;
 - (instancetype)initWithCategory:(NSString *)category;
 @end
+
+@interface CACrashReportViewController : CAReportViewController
+@end
+@interface CAMemoryReportViewController : CAReportViewController
+@end
+@interface CARestartReportViewController : CAReportViewController
+@end
+@interface CAResourceReportViewController : CAReportViewController
+@end
+@interface CAOtherReportViewController : CAReportViewController
+@end
+@interface CAReportDetailController : PSListController
+- (instancetype)initWithSpecifier:(PSSpecifier *)specifier;
+@end
