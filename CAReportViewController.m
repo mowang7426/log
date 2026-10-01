@@ -119,15 +119,9 @@
             @[@"文件",r[@"fileName"] ?: @"未知"]
         ];
         for (NSArray *f in basic) [rows addObject:[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"%@：%@",f[0],f[1]] target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
-        [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"异常信息" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
-        NSArray *exceptionInfo=@[
-            @[@"原始异常类型",e[@"type"] ?: @"未知"],
-            @[@"原始信号",e[@"signal"] ?: @"未知"],
-            @[@"异常子类型",e[@"subtype"] ?: @"未知"],
-            @[@"异常地址",e[@"address"] ?: @"未知"],
-            @[@"终止信息",r[@"termination"] ?: @"未知"]
-        ];
-        for (NSArray *f in exceptionInfo) [rows addObject:[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"%@：%@",f[0],f[1]] target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
+        PSSpecifier *more=[PSSpecifier preferenceSpecifierNamed:@"更多详情" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
+        more.buttonAction=@selector(showMoreDetails:);
+        [rows addObject:more];
         PSSpecifier *source=[PSSpecifier preferenceSpecifierNamed:@"查看源文件" target:nil set:nil get:nil detail:[CAReportSourceController class] cell:PSLinkCell edit:nil];
         [source setProperty:r[@"path"] ?: @"" forKey:@"reportPath"];
         [rows addObject:source];
@@ -135,7 +129,30 @@
     }
     return _specifiers;
 }
-- (void)showAnalysis:(PSSpecifier *)specifier {
+- (void)showMoreDetails:(PSSpecifier *)specifier {
+    (void)specifier;
+    NSDictionary *r=_report ?: @{};
+    NSDictionary *e=[r[@"exception"] isKindOfClass:[NSDictionary class]] ? r[@"exception"] : @{};
+    NSDictionary *t=[r[@"termination"] isKindOfClass:[NSDictionary class]] ? r[@"termination"] : @{};
+    NSMutableArray *parts=[NSMutableArray array];
+    void (^add)(NSString *,id)=^(NSString *label,id value){ if (value && value != [NSNull null]) [parts addObject:[NSString stringWithFormat:@"%@：%@",label,value]]; };
+    add(@"原始异常类型",e[@"type"] ?: @"未知");
+    add(@"原始信号",e[@"signal"] ?: @"未知");
+    add(@"异常子类型",e[@"subtype"] ?: @"未知");
+    add(@"异常地址",e[@"address"] ?: @"未知");
+    add(@"异常代码",e[@"codes"] ?: @"未知");
+    add(@"终止代码",t[@"code"] ?: @"未知");
+    add(@"终止来源",t[@"byProc"] ?: @"未知");
+    add(@"终止说明",t[@"indicator"] ?: @"未知");
+    add(@"进程角色",r[@"procRole"] ?: @"未知");
+    add(@"运行状态",r[@"coalitionID"] ? [NSString stringWithFormat:@"coalition %@",r[@"coalitionID"]] : @"未知");
+    add(@"原始故障线程",r[@"faultingThread"] ?: @"未知");
+    NSString *text=[parts componentsJoinedByString:@"\n"];
+    UIAlertController *alert=[UIAlertController alertControllerWithTitle:@"更多详情" message:text preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"复制" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a){ [UIPasteboard generalPasteboard].string=text; }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"关闭" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
+}
     NSString *text=[specifier propertyForKey:@"analysisText"] ?: @"暂无分析结论";
     UIAlertController *alert=[UIAlertController alertControllerWithTitle:@"完整分析结论" message:text preferredStyle:UIAlertControllerStyleAlert];
     [alert addAction:[UIAlertAction actionWithTitle:@"复制" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a){ [UIPasteboard generalPasteboard].string=text; }]];
