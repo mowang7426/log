@@ -182,6 +182,7 @@ static NSString * const CAUnknown = @"其他";
     BOOL isDirectory=NO;
     BOOL exists=[fm fileExistsAtPath:root isDirectory:&isDirectory];
     NSError *lastError=nil;
+    if (exists && isDirectory && ![fm isReadableFileAtPath:root]) lastError=[[NSError errorWithDomain:NSCocoaErrorDomain code:NSFileReadNoPermissionError userInfo:@{NSLocalizedDescriptionKey:@"CrashReporter 目录没有读取权限"}] retain];
     NSUInteger enumerated=0, matched=0, readable=0, parsed=0;
     NSDirectoryEnumerator *enumerator=exists && isDirectory ? [fm enumeratorAtPath:root] : nil;
     NSString *relative=nil;
@@ -194,6 +195,7 @@ static NSString * const CAUnknown = @"其他";
             NSString *path=[root stringByAppendingPathComponent:relative];
             NSError *error=nil;
             NSDictionary *attrs=[fm attributesOfItemAtPath:path error:&error];
+            if (!attrs && error) { [lastError release];lastError=[error retain]; }
             if (![attrs[NSFileType] isEqual:NSFileTypeRegular]) continue;
             NSArray *stamp=@[attrs[NSFileSize] ?: @0, attrs[NSFileModificationDate] ?: [NSNull null], attrs[NSFileCreationDate] ?: [NSNull null],attrs[NSFileSystemFileNumber] ?: @0];
             NSDictionary *cached=_fileEntries[path];

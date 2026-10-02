@@ -27,5 +27,8 @@ int main(void){@autoreleasepool{
     [fm removeItemAtPath:a error:NULL];NSArray *remaining=[s scanReportsWithDiagnostics:&d];Check(remaining.count==1 && s.parses==3 && [d[@"removed"] intValue]==1,@"deletion removed without reparsing");
     Check([d[@"lastScannedAt"] length]>0,@"actual last scanned time");
     [fm removeItemAtPath:s.testRoot error:NULL];Check([s scanReportsWithDiagnostics:&d].count==0 && ![d[@"exists"] boolValue],@"directory disappears safely");
-    [s release];NSLog(@"Incremental scan regressions passed");
+#if !__has_feature(objc_arc)
+    [s release];
+#endif
+    NSLog(@"Incremental scan regressions passed");
 }return 0;}

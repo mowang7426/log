@@ -11,6 +11,8 @@
 @end
 void CAWrapEvidenceRow(PSSpecifier *s) { [s setProperty:[CAEvidenceWrappingCell class] forKey:@"cellClass"]; }
 CGFloat CAEvidenceRowHeight(UITableView *table,PSSpecifier *s) {
-    CGRect box=[[s name] boundingRectWithSize:CGSizeMake(MAX(1,table.bounds.size.width-80),CGFLOAT_MAX) options:NSStringDrawingUsesLineFragmentOrigin|NSStringDrawingUsesFontLeading attributes:@{NSFontAttributeName:[UIFont preferredFontForTextStyle:UIFontTextStyleBody]} context:nil];
+    NSMutableParagraphStyle *paragraph=[[[NSMutableParagraphStyle alloc] init] autorelease];
+    paragraph.lineBreakMode=NSLineBreakByCharWrapping;
+    CGRect box=[[s name] boundingRectWithSize:CGSizeMake(MAX(1,table.bounds.size.width-80),CGFLOAT_MAX) options:NSStringDrawingUsesLineFragmentOrigin|NSStringDrawingUsesFontLeading attributes:@{NSFontAttributeName:[UIFont preferredFontForTextStyle:UIFontTextStyleBody],NSParagraphStyleAttributeName:paragraph} context:nil];
     return MAX(52,ceil(box.size.height)+28);
 }

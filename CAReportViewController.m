@@ -18,7 +18,7 @@
     label.adjustsFontForContentSizeCategory=YES;
     label.textColor=[UIColor labelColor];
     label.numberOfLines=0;
-    label.lineBreakMode=NSLineBreakByWordWrapping;
+    label.lineBreakMode=NSLineBreakByCharWrapping;
     label.frame=CGRectMake(16,10,MAX(1,self.contentView.bounds.size.width-32),MAX(1,self.contentView.bounds.size.height-20));
 }
 @end
@@ -60,6 +60,8 @@ static PSSpecifier *CAShortRow(NSString *text) {
                 [item setProperty:[NSString stringWithFormat:@"%@ · %@",r[@"timestamp"] ?: @"时间未知",r[@"diagnosis"] ?: @"暂无摘要"] forKey:@"footerText"];
                 [rows addObject:item];
             }
+            NSDictionary *scan=CALogStore.sharedStore.scanDiagnostics;
+            if (CALogStore.sharedStore.reportsReady && (![scan[@"exists"] boolValue] || [scan[@"error"] length])) [rows addObject:CAShortRow([NSString stringWithFormat:@"扫描错误：%@",[scan[@"error"] length]?scan[@"error"]:@"日志目录不存在或不可访问"])];
             if (!reports.count) [rows addObject:[PSSpecifier preferenceSpecifierNamed:CALogStore.sharedStore.scanInProgress?@"正在后台扫描…":@"扫描完成：没有匹配的日志" target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
         }
         _specifiers=[rows mutableCopy];
@@ -96,6 +98,7 @@ static PSSpecifier *CAShortRow(NSString *text) {
     BOOL _loading;
     BOOL _loaded;
 }
+- (void)copyReportPath:(PSSpecifier *)specifier { (void)specifier;[UIPasteboard generalPasteboard].string=_report[@"path"] ?: [self.specifier propertyForKey:@"reportPath"]; }
 - (void)viewWillAppear:(BOOL)animated {
     [super viewWillAppear:animated];
     // specifiers are immutable for this controller lifetime; returning must not reread the IPS file.
@@ -143,12 +146,14 @@ static PSSpecifier *CAShortRow(NSString *text) {
             NSString *message=([path isKindOfClass:[NSString class]] && path.length)
                 ? [NSString stringWithFormat:@"无法读取日志，文件可能已删除或没有访问权限：%@",path]
                 : @"未收到所选日志的完整路径，请返回列表重新进入。";
-            _specifiers=[[NSMutableArray alloc] initWithObjects:[PSSpecifier preferenceSpecifierNamed:message target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil],nil];
+            _specifiers=[[NSMutableArray alloc] initWithObjects:CAShortRow(message),nil];
             return _specifiers;
         }
         self.title=_report[@"procName"] ?: _report[@"app_name"] ?: @"日志详情";
         NSMutableArray *rows=[NSMutableArray array];
         NSDictionary *r=_report;
+        [rows addObject:CAShortRow([NSString stringWithFormat:@"原始日志文件：%@\n完整路径：%@",r[@"fileName"] ?: @"未提供",r[@"path"] ?: @"未提供"])];
+        PSSpecifier *copyPath=[PSSpecifier preferenceSpecifierNamed:@"复制日志完整路径" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];copyPath.buttonAction=@selector(copyReportPath:);[rows addObject:copyPath];
         NSDictionary *match=_match;
         NSString *matchStatus=_matchStatus;
         NSDictionary *human=_human;
