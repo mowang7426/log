@@ -1,5 +1,19 @@
 # CrashAnalyzer
 
+## 1.2.0 · Build 14
+
+- Plugin evidence separates actual fault-thread references, auxiliary other-thread references, loaded-only images (no attribution evidence), and malformed/missing evidence. Counts are distinct incident reports, never a caused-crash count.
+- Plugin details retain actual process/exception/thread/frame/symbol evidence and original report/source links. No fields are synthesized.
+- Local plugin validation records five observation states, the actual entered test date, optional app/plugin versions and notes. No recurrence is not a confirmed cause; this tool does not change tweaks.
+- Home/plugin/report rows wrap with Dynamic Type and system colors; complete paths can be copied.
+- Existing asynchronous scan/navigation is retained. A 15-second metadata check while Settings runs, activation/entry refresh and the explicit refresh reuse unchanged reports, parse added/changed files, and remove deleted files. iOS suspension pauses checks; last scan and counts are shown.
+- Foundation regression tests include strict ARC/MRC plugin evidence and MRC incremental directory scans, in addition to existing case/human/workbench tests.
+
+Plugin candidates are deliberately restricted to known MobileSubstrate DynamicLibraries and TweakInject paths (including rootless/RootHide prefixes). Other libraries are not inferred to be tweaks merely because they are under a jailbreak root. If the original IPS file is moved/deleted, the captured analysis remains visible but its source-view link may no longer be readable.
+
+No real-device installation/visual test is implied by CI builds. Navigation performance profiling/overhaul is intentionally excluded.
+
+
 RootHide-compatible iOS 15–17 analytics log viewer for Settings.
 
 ## Features
