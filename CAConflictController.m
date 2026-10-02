@@ -66,6 +66,7 @@ static NSString *CAConflictText(NSDictionary *s) {
 }
 @end
 
+@implementation CAConflictController
 + (NSArray *)summaryForReports:(NSArray *)reports limit:(NSUInteger)limit {
     NSMutableArray *a=[NSMutableArray arrayWithArray:[CAStats(reports) allValues]];
     [a sortUsingComparator:^NSComparisonResult(NSDictionary *x, NSDictionary *y) { NSUInteger xm=[x[@"main"] unsignedIntegerValue], ym=[y[@"main"] unsignedIntegerValue]; if(xm!=ym)return xm>ym?NSOrderedAscending:NSOrderedDescending; NSUInteger xp=[x[@"participation"] unsignedIntegerValue],yp=[y[@"participation"] unsignedIntegerValue]; return xp>yp?NSOrderedAscending:(xp<yp?NSOrderedDescending:NSOrderedSame); }];
