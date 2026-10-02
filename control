@@ -1,6 +1,6 @@
 Package: com.mowang.crashanalyzer
 Name: CrashAnalyzer
-Version: 1.1.3
+Version: 1.1.4
 Architecture: iphoneos-arm64
 Description: 自动扫描、分类和分析 iOS .ips 日志
 Maintainer: MoWang

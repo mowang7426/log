@@ -42,7 +42,8 @@
             for (NSDictionary *s in conflicts) {
                 NSUInteger main=[s[@"main"] unsignedIntegerValue], part=[s[@"participation"] unsignedIntegerValue];
                 NSString *label=[NSString stringWithFormat:@"%@ · %@ %lu 次 · 参与 %lu 次",s[@"name"],main?@"主嫌疑":@"参与",(unsigned long)(main?:part),(unsigned long)part];
-                [items addObject:[PSSpecifier preferenceSpecifierNamed:label target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
+                PSSpecifier *row=[PSSpecifier preferenceSpecifierNamed:label target:nil set:nil get:nil detail:[CAConflictDetailController class] cell:PSLinkCell edit:nil];
+                [row setProperty:s forKey:@"conflictStats"]; [items addObject:row];
             }
         } else {
             [items addObject:[PSSpecifier preferenceSpecifierNamed:@"正在等待日志扫描结果…" target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
@@ -64,8 +65,8 @@
         [items addObject:ai];
 
         [items addObject:[PSSpecifier preferenceSpecifierNamed:@"AI 分析历史" target:nil set:nil get:nil detail:[CAHistoryController class] cell:PSLinkCell edit:nil]];
-        PSSpecifier *about=[PSSpecifier preferenceSpecifierNamed:@"关于 · CrashAnalyzer 1.1.3" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
-        [about setProperty:@"第四版诊断工作台 · Build 11\nAuthor / Maintainer: MoWang\n已加载模块不是已证实根因；实测案例只是用户记录。" forKey:@"footerText"]; [items addObject:about];
+        PSSpecifier *about=[PSSpecifier preferenceSpecifierNamed:@"关于 · CrashAnalyzer 1.1.4" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
+        [about setProperty:@"第四版诊断工作台 · Build 12\nAuthor / Maintainer: MoWang\n已加载模块不是已证实根因；实测案例只是用户记录。" forKey:@"footerText"]; [items addObject:about];
         PSSpecifier *refresh=[PSSpecifier preferenceSpecifierNamed:@"重新扫描" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
         refresh.buttonAction=@selector(reloadNow:);
         [items addObject:refresh];

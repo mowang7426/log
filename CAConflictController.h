@@ -3,3 +3,5 @@
 @interface CAConflictController : PSListController
 + (NSArray *)summaryForReports:(NSArray *)reports limit:(NSUInteger)limit;
 @end
+@interface CAConflictDetailController : PSListController
+@end

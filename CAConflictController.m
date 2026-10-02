@@ -42,7 +42,30 @@ static NSMutableDictionary *CAStats(NSArray *reports) {
     }
     return all;
 }
-@implementation CAConflictController
+static NSString *CAConflictText(NSDictionary *s) {
+    return [NSString stringWithFormat:@"%@\n\n证据强度：%@\n主嫌疑次数：%@\n参与次数：%@\n\n注入路径：\n%@\n\n相关日志：\n%@\n\n说明：动态库出现在故障现场并不等于确定根因。建议结合禁用后是否停止复现进行验证。",s[@"name"],[s[@"main"] unsignedIntegerValue]?@"高（故障线程帧引用）":@"中（仅出现在相关日志）",s[@"main"],s[@"participation"],[s[@"paths"] componentsJoinedByString:@"\n"],[s[@"reports"] componentsJoinedByString:@"\n"]];
+}
+
+@implementation CAConflictDetailController
+- (id)specifiers {
+    if (!_specifiers) {
+        NSDictionary *s=[self.specifier propertyForKey:@"conflictStats"];
+        self.title=s[@"name"] ?: @"插件详情";
+        NSMutableArray *rows=[NSMutableArray array];
+        [rows addObject:[PSSpecifier preferenceSpecifierNamed:s[@"name"] ?: @"未知动态库" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
+        [rows addObject:[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"证据强度：%@",[s[@"main"] unsignedIntegerValue]?@"高（故障线程帧引用）":@"中（仅出现在相关日志）"] target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
+        [rows addObject:[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"主嫌疑次数：%@",s[@"main"]] target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
+        [rows addObject:[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"参与次数：%@",s[@"participation"]] target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
+        [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"注入路径" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
+        for (NSString *x in s[@"paths"]) [rows addObject:[PSSpecifier preferenceSpecifierNamed:x target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
+        [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"相关日志" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
+        for (NSString *x in s[@"reports"]) [rows addObject:[PSSpecifier preferenceSpecifierNamed:x target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
+        [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"注意：动态库出现在故障现场并不等于确定根因。建议结合禁用后是否停止复现进行验证。" target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
+        _specifiers=[rows mutableCopy];
+    } return _specifiers;
+}
+@end
+
 + (NSArray *)summaryForReports:(NSArray *)reports limit:(NSUInteger)limit {
     NSMutableArray *a=[NSMutableArray arrayWithArray:[CAStats(reports) allValues]];
     [a sortUsingComparator:^NSComparisonResult(NSDictionary *x, NSDictionary *y) { NSUInteger xm=[x[@"main"] unsignedIntegerValue], ym=[y[@"main"] unsignedIntegerValue]; if(xm!=ym)return xm>ym?NSOrderedAscending:NSOrderedDescending; NSUInteger xp=[x[@"participation"] unsignedIntegerValue],yp=[y[@"participation"] unsignedIntegerValue]; return xp>yp?NSOrderedAscending:(xp<yp?NSOrderedDescending:NSOrderedSame); }];
@@ -53,10 +76,10 @@ static NSMutableDictionary *CAStats(NSArray *reports) {
     if (!_specifiers) {
         self.title=@"疑似冲突插件"; NSMutableArray *rows=[NSMutableArray array]; NSArray *reports=[CALogStore.sharedStore reports]; NSArray *items=[CAConflictController summaryForReports:reports limit:0];
         PSSpecifier *intro=[PSSpecifier preferenceSpecifierNamed:@"证据排序，不是根因定案" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]; [intro setProperty:@"高：出现在故障线程帧；中：仅参与相关日志。请结合禁用/恢复测试验证。" forKey:@"footerText"]; [rows addObject:intro];
-        for (NSDictionary *s in items) { NSUInteger main=[s[@"main"] unsignedIntegerValue], part=[s[@"participation"] unsignedIntegerValue]; NSString *level=main?@"高嫌疑":@"中嫌疑"; NSString *label=[NSString stringWithFormat:@"%@ · %@ · 主嫌疑 %lu 次 · 参与 %lu 次",s[@"name"],level,(unsigned long)main,(unsigned long)part]; PSSpecifier *p=[PSSpecifier preferenceSpecifierNamed:label target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil]; [p setProperty:s forKey:@"conflictStats"]; p.buttonAction=@selector(open:); [rows addObject:p]; }
+        for (NSDictionary *s in items) { NSUInteger main=[s[@"main"] unsignedIntegerValue], part=[s[@"participation"] unsignedIntegerValue]; NSString *level=main?@"高嫌疑":@"中嫌疑"; NSString *label=[NSString stringWithFormat:@"%@ · %@ · 主嫌疑 %lu 次 · 参与 %lu 次",s[@"name"],level,(unsigned long)main,(unsigned long)part]; PSSpecifier *p=[PSSpecifier preferenceSpecifierNamed:label target:nil set:nil get:nil detail:[CAConflictDetailController class] cell:PSLinkCell edit:nil]; [p setProperty:s forKey:@"conflictStats"]; [rows addObject:p]; }
         if (!items.count) [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"暂未发现可排序的注入动态库" target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
         _specifiers=[rows mutableCopy];
     } return _specifiers;
 }
-- (void)open:(PSSpecifier *)p { NSDictionary *s=[p propertyForKey:@"conflictStats"]; NSMutableString *text=[NSMutableString stringWithFormat:@"%@\n\n证据强度：%@\n主嫌疑次数：%@\n参与次数：%@\n\n注入路径：\n%@\n\n相关日志：\n%@\n\n说明：动态库出现在故障现场并不等于确定根因。建议结合禁用后是否停止复现进行验证。",s[@"name"],[s[@"main"] unsignedIntegerValue]?@"高（故障线程帧引用）":@"中（仅出现在相关日志）",s[@"main"],s[@"participation"],[s[@"paths"] componentsJoinedByString:@"\n"],[s[@"reports"] componentsJoinedByString:@"\n"]]; CAPresentText(self,s[@"name"],text); }
+- (void)open:(PSSpecifier *)p { NSDictionary *s=[p propertyForKey:@"conflictStats"]; CAPresentText(self,s[@"name"],CAConflictText(s)); }
 @end
