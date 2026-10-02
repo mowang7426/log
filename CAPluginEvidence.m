@@ -55,6 +55,9 @@ static NSString *Incident(NSDictionary *r) {
         }
         NSMutableDictionary *refs=[NSMutableDictionary dictionary];
         BOOL complete=threads.count>0 && fault>=0;
+        // usedImages alone establishes loading, never thread attribution.
+        // Explicit malformed thread/index data is instead labeled unknown.
+        if (!report[@"threads"] && !report[@"faultingThread"] && !report[@"normalizedFaultingThread"]) complete=YES;
         for (NSUInteger t=0;t<threads.count;t++) {
             NSDictionary *thread=Dict(threads[t]);
             if (![thread[@"frames"] isKindOfClass:NSArray.class]) complete=NO;
