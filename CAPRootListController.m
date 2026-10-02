@@ -5,6 +5,8 @@
 #import "CALogStore.h"
 #import "CAReportViewController.h"
 #import "CAConflictController.h"
+#import "CAPluginEvidence.h"
+#import "CAEvidenceUI.h"
 #import <Preferences/PSSpecifier.h>
 #import <Preferences/PSTableCell.h>
 
@@ -41,12 +43,12 @@
         if (conflicts.count) {
             for (NSDictionary *s in conflicts) {
                 NSUInteger main=[s[@"main"] unsignedIntegerValue], part=[s[@"participation"] unsignedIntegerValue];
-                NSString *label=[NSString stringWithFormat:@"%@ · %@ %lu 次 · 参与 %lu 次",s[@"name"],main?@"主嫌疑":@"参与",(unsigned long)(main?:part),(unsigned long)part];
+                NSString *label=[NSString stringWithFormat:@"%@\n%@ %lu · 相关报告 %lu",s[@"name"],@"故障线程引用报告数",(unsigned long)main,(unsigned long)part];
                 PSSpecifier *row=[PSSpecifier preferenceSpecifierNamed:label target:nil set:nil get:nil detail:[CAConflictDetailController class] cell:PSLinkCell edit:nil];
-                [row setProperty:s forKey:@"conflictStats"]; [items addObject:row];
+                [row setProperty:s forKey:@"conflictStats"];[row setName:[NSString stringWithFormat:@"%@\n%@\n故障线程引用报告数 %@ · 相关报告 %@",s[@"name"],[CAPluginEvidence tierLabel:s[@"tier"]],s[@"main"],s[@"participation"]]]; [items addObject:row];
             }
         } else {
-            [items addObject:[PSSpecifier preferenceSpecifierNamed:@"正在等待日志扫描结果…" target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
+            [items addObject:[PSSpecifier preferenceSpecifierNamed:CALogStore.sharedStore.scanInProgress?@"正在后台扫描…":(CALogStore.sharedStore.reportsReady?@"扫描完成：暂无可用插件证据":@"尚未扫描") target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
         }
         PSSpecifier *allConflicts=[PSSpecifier preferenceSpecifierNamed:@"查看全部疑似冲突插件" target:nil set:nil get:nil detail:[CAConflictController class] cell:PSLinkCell edit:nil]; [items addObject:allConflicts];
 
@@ -65,18 +67,21 @@
         [items addObject:ai];
 
         [items addObject:[PSSpecifier preferenceSpecifierNamed:@"AI 分析历史" target:nil set:nil get:nil detail:[CAHistoryController class] cell:PSLinkCell edit:nil]];
-        PSSpecifier *about=[PSSpecifier preferenceSpecifierNamed:@"关于 · CrashAnalyzer 1.1.4" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
-        [about setProperty:@"第四版诊断工作台 · Build 12\nAuthor / Maintainer: MoWang\n已加载模块不是已证实根因；实测案例只是用户记录。" forKey:@"footerText"]; [items addObject:about];
+        PSSpecifier *about=[PSSpecifier preferenceSpecifierNamed:@"关于 · CrashAnalyzer 1.2.0" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
+        [about setProperty:@"真实证据与本地验证 · Build 14\nAuthor / Maintainer: MoWang\n已加载模块不是已证实根因；实测案例只是用户记录。" forKey:@"footerText"]; [items addObject:about];
         PSSpecifier *refresh=[PSSpecifier preferenceSpecifierNamed:@"重新扫描" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
         refresh.buttonAction=@selector(reloadNow:);
         [items addObject:refresh];
+        [items addObject:[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"最后扫描：%@\n新增/变化 %@ · 复用 %@ · 移除 %@\n%@",diagnostics[@"lastScannedAt"]?:@"尚未扫描",diagnostics[@"changed"]?:@0,diagnostics[@"reused"]?:@0,diagnostics[@"removed"]?:@0,diagnostics[@"error"]?:@""] target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
+        for (PSSpecifier *row in items) if ([row cellType]!=PSGroupCell) CAWrapEvidenceRow(row);
         _specifiers=[items mutableCopy];
     }
     return _specifiers;
 }
 
+- (CGFloat)tableView:(UITableView *)t heightForRowAtIndexPath:(NSIndexPath *)i {PSSpecifier *s=[self specifierAtIndexPath:i];return [s propertyForKey:@"cellClass"]==[CAEvidenceWrappingCell class]?CAEvidenceRowHeight(t,s):[super tableView:t heightForRowAtIndexPath:i];}
 - (void)viewDidLoad { [super viewDidLoad]; self.title=@"分析日志"; [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(logStoreDidRefresh:) name:CALogStoreDidRefreshNotification object:[CALogStore sharedStore]]; if (![[CALogStore sharedStore] reportsReady]) [[CALogStore sharedStore] refreshReports]; }
-- (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; if (!_specifiers) [self reloadSpecifiers]; if (![[CALogStore sharedStore] reportsReady]) [[CALogStore sharedStore] refreshReports]; }
+- (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; if (!_specifiers) [self reloadSpecifiers]; [[CALogStore sharedStore] refreshReports]; }
 - (void)logStoreDidRefresh:(NSNotification *)note { (void)note; [_specifiers release]; _specifiers=nil; if (self.viewIfLoaded.window) [self reloadSpecifiers]; }
 - (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; [super dealloc]; }
 - (void)reloadNow:(PSSpecifier *)specifier {

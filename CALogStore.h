@@ -8,6 +8,8 @@ FOUNDATION_EXPORT NSString * const CALogStoreDidRefreshNotification;
     NSArray *_reportsSnapshot;
     NSDictionary *_diagnosticsSnapshot;
     NSObject *_analysisLock;
+    NSDictionary *_fileEntries;
+    dispatch_source_t _directoryTimer;
     BOOL _scanInProgress;
     BOOL _reportsReady;
 }

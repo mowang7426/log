@@ -22,6 +22,10 @@ jobs:
           /tmp/ca-case-tests-mrc
           clang -fno-objc-arc -fblocks -framework Foundation CALogStore.m CACaseStore.m CALogStoreTests.m -o /tmp/ca-human-tests
           /tmp/ca-human-tests
+          clang -fno-objc-arc -fblocks -framework Foundation CAPluginEvidence.m CAPluginEvidenceTests.m -o /tmp/ca-plugin-tests
+          /tmp/ca-plugin-tests
+          clang -fno-objc-arc -fblocks -framework Foundation CALogStore.m CACaseStore.m CAIncrementalScanTests.m -o /tmp/ca-scan-tests
+          /tmp/ca-scan-tests
           clang -Wall -Wextra -Werror -fobjc-arc -framework Foundation CAWorkbench.m CAWorkbenchTests.m -o /tmp/ca-workbench-tests
           /tmp/ca-workbench-tests
           clang -Wall -Wextra -Werror -fno-objc-arc -fblocks -framework Foundation CAWorkbench.m CAWorkbenchTests.m -o /tmp/ca-workbench-tests-mrc

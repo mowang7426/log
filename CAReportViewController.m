@@ -3,6 +3,7 @@
 #import "CAAI.h"
 #import "CAWorkbenchController.h"
 #import "CALogStore.h"
+#import "CAEvidenceUI.h"
 #import <Preferences/PSSpecifier.h>
 #import <Preferences/PSTableCell.h>
 
@@ -51,19 +52,25 @@ static PSSpecifier *CAShortRow(NSString *text) {
             for (NSDictionary *r in reports) {
                 NSString *name=r[@"fileName"] ?: r[@"procName"] ?: r[@"app_name"] ?: @"未知日志";
                 PSSpecifier *item=[PSSpecifier preferenceSpecifierNamed:name target:nil set:nil get:nil detail:[CAReportDetailController class] cell:PSLinkCell edit:nil];
+                CAWrapEvidenceRow(item);
+                [item setName:[NSString stringWithFormat:@"%@\n%@",name,r[@"timestamp"] ?: @"时间未知"]];
                 [item setProperty:r forKey:@"reportSnapshot"];
                 [item setProperty:r[@"path"] ?: @"" forKey:@"reportPath"];
                 [item setProperty:r[@"category"] ?: @"其他" forKey:@"reportCategory"];
                 [item setProperty:[NSString stringWithFormat:@"%@ · %@",r[@"timestamp"] ?: @"时间未知",r[@"diagnosis"] ?: @"暂无摘要"] forKey:@"footerText"];
                 [rows addObject:item];
             }
-            if (!reports.count) [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"没有匹配的日志" target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
+            if (!reports.count) [rows addObject:[PSSpecifier preferenceSpecifierNamed:CALogStore.sharedStore.scanInProgress?@"正在后台扫描…":@"扫描完成：没有匹配的日志" target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
         }
         _specifiers=[rows mutableCopy];
     }
     return _specifiers;
 }
-- (void)viewDidLoad { [super viewDidLoad]; self.title=[self reportCategory] ?: @"分类未绑定"; }
+- (CGFloat)tableView:(UITableView *)t heightForRowAtIndexPath:(NSIndexPath *)i {PSSpecifier *s=[self specifierAtIndexPath:i];return [s propertyForKey:@"cellClass"]==[CAEvidenceWrappingCell class]?CAEvidenceRowHeight(t,s):[super tableView:t heightForRowAtIndexPath:i];}
+- (void)viewDidLoad { [super viewDidLoad]; self.title=[self reportCategory] ?: @"分类未绑定"; [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(scanUpdated:) name:CALogStoreDidRefreshNotification object:CALogStore.sharedStore]; }
+- (void)viewWillAppear:(BOOL)a {[super viewWillAppear:a];[CALogStore.sharedStore refreshReports];}
+- (void)scanUpdated:(NSNotification *)n {(void)n;[_specifiers release];_specifiers=nil;if(self.viewIfLoaded.window)[self reloadSpecifiers];}
+- (void)dealloc {[[NSNotificationCenter defaultCenter] removeObserver:self];[super dealloc];}
 @end
 @implementation CACrashReportViewController
 - (NSString *)reportCategory { return @"崩溃"; }

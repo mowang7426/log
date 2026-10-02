@@ -60,12 +60,25 @@ static NSString * const CAUnknown = @"其他";
 
 @interface CALogStore ()
 - (NSArray *)scanReportsWithDiagnostics:(NSDictionary **)diagnostics;
+- (void)startDirectoryMonitoring;
 @end
 
 @implementation CALogStore
 - (instancetype)init { self=[super init]; if (self) _analysisLock=[NSObject new]; return self; }
-+ (instancetype)sharedStore { static CALogStore *s; static dispatch_once_t once; dispatch_once(&once, ^{ s=[self new]; }); return s; }
++ (instancetype)sharedStore { static CALogStore *s; static dispatch_once_t once; dispatch_once(&once, ^{ s=[self new]; [s startDirectoryMonitoring]; }); return s; }
 
+// Metadata-only polling catches nested directory changes and deletions as well as
+// additions. Parsing remains on the existing serial/coalesced background scan.
+// iOS suspension pauses the timer; activation and explicit refresh catch up.
+- (void)startDirectoryMonitoring {
+    _directoryTimer=dispatch_source_create(DISPATCH_SOURCE_TYPE_TIMER,0,0,dispatch_get_main_queue());
+    __block CALogStore *store=self; // singleton owns timer; avoid a self-retaining cycle
+    dispatch_source_set_timer(_directoryTimer,dispatch_time(DISPATCH_TIME_NOW,15*NSEC_PER_SEC),15*NSEC_PER_SEC,NSEC_PER_SEC);
+    dispatch_source_set_event_handler(_directoryTimer,^{ [store refreshReports]; });
+    dispatch_resume(_directoryTimer);
+    [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(applicationBecameActive:) name:@"UIApplicationDidBecomeActiveNotification" object:nil];
+}
+- (void)applicationBecameActive:(NSNotification *)note { (void)note; [self refreshReports]; }
 - (NSArray<NSString *> *)roots {
     return @[@"/var/mobile/Library/Logs/CrashReporter"];
 }
@@ -137,7 +150,9 @@ static NSString * const CAUnknown = @"其他";
     @synchronized(self) { return _reportsSnapshot ? [[_reportsSnapshot retain] autorelease] : @[]; }
 }
 - (void)dealloc {
-    [_reportsSnapshot release]; [_diagnosticsSnapshot release]; [_analysisLock release]; [super dealloc];
+    [[NSNotificationCenter defaultCenter] removeObserver:self];
+    if (_directoryTimer) { dispatch_source_cancel(_directoryTimer); dispatch_release(_directoryTimer); }
+    [_fileEntries release]; [_reportsSnapshot release]; [_diagnosticsSnapshot release]; [_analysisLock release]; [super dealloc];
 }
 - (void)refreshReports {
     // Coalesce taps and concurrent controllers. No lock is held during disk I/O,
@@ -160,6 +175,8 @@ static NSString * const CAUnknown = @"其他";
 }
 - (NSArray *)scanReportsWithDiagnostics:(NSDictionary **)diagnostics {
     NSMutableArray *out=[NSMutableArray array];
+    NSMutableDictionary *nextEntries=[NSMutableDictionary dictionary];
+    NSUInteger reused=0, changed=0;
     NSFileManager *fm=[[[NSFileManager alloc] init] autorelease];
     NSString *root=[[self roots] firstObject];
     BOOL isDirectory=NO;
@@ -176,6 +193,16 @@ static NSString * const CAUnknown = @"其他";
         @autoreleasepool {
             NSString *path=[root stringByAppendingPathComponent:relative];
             NSError *error=nil;
+            NSDictionary *attrs=[fm attributesOfItemAtPath:path error:&error];
+            if (![attrs[NSFileType] isEqual:NSFileTypeRegular]) continue;
+            NSArray *stamp=@[attrs[NSFileSize] ?: @0, attrs[NSFileModificationDate] ?: [NSNull null], attrs[NSFileCreationDate] ?: [NSNull null],attrs[NSFileSystemFileNumber] ?: @0];
+            NSDictionary *cached=_fileEntries[path];
+            if (cached && [cached[@"stamp"] isEqual:stamp]) {
+                NSDictionary *r=cached[@"report"];[out addObject:r];nextEntries[path]=cached;reused++;readable++;
+                if (![r[@"parseError"] boolValue]) parsed++;
+                continue;
+            }
+            changed++;
             NSData *data=[NSData dataWithContentsOfFile:path options:0 error:&error];
             if (!data) { [lastError release]; lastError=[error retain]; continue; }
             readable++;
@@ -187,10 +214,17 @@ static NSString * const CAUnknown = @"其他";
             r[@"fileName"]=path.lastPathComponent;
             r[@"category"]=[self categoryForReport:r];
             r[@"diagnosis"]=[self diagnosisForReport:r];
-            [out addObject:[[r copy] autorelease]];
+            // Do not cache a file that changed while it was being read.
+            NSDictionary *after=[fm attributesOfItemAtPath:path error:NULL];
+            NSArray *afterStamp=@[after[NSFileSize] ?: @0,after[NSFileModificationDate] ?: [NSNull null],after[NSFileCreationDate] ?: [NSNull null],after[NSFileSystemFileNumber] ?: @0];
+            NSDictionary *snapshot=[[r copy] autorelease]; [out addObject:snapshot];
+            if ([stamp isEqual:afterStamp]) nextEntries[path]=@{@"stamp":stamp,@"report":snapshot};
         }
     }
-    if (diagnostics) *diagnostics=@{@"path":root, @"exists":@(exists), @"isDirectory":@(isDirectory),
+    NSUInteger removed=0; for (NSString *oldPath in _fileEntries) if (!nextEntries[oldPath]) removed++;
+    [_fileEntries release];_fileEntries=[nextEntries copy];
+    NSDateFormatter *date=[[[NSDateFormatter alloc] init] autorelease];date.locale=[NSLocale localeWithLocaleIdentifier:@"en_US_POSIX"];date.dateFormat=@"yyyy-MM-dd HH:mm:ss Z";
+    if (diagnostics) *diagnostics=@{@"lastScannedAt":[date stringFromDate:NSDate.date],@"reused":@(reused),@"changed":@(changed),@"removed":@(removed),@"path":root, @"exists":@(exists), @"isDirectory":@(isDirectory),
         @"enumerated":@(enumerated), @"matched":@(matched), @"readable":@(readable), @"parsed":@(parsed),
         @"error":lastError.localizedDescription ?: @""};
     [lastError release];
