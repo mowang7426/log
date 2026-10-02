@@ -49,6 +49,7 @@
         }
         PSSpecifier *allConflicts=[PSSpecifier preferenceSpecifierNamed:@"查看全部疑似冲突插件" target:nil set:nil get:nil detail:[CAConflictController class] cell:PSLinkCell edit:nil]; [items addObject:allConflicts];
 
+        NSDictionary *diagnostics=[[CALogStore sharedStore] scanDiagnostics];
         PSSpecifier *status=[PSSpecifier preferenceSpecifierNamed:@"扫描状态" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
         [status setProperty:@"CrashReporter 目录与解析器状态" forKey:@"footerText"];
         [items addObject:status];
