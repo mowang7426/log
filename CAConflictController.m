@@ -1,4 +1,5 @@
 #import "CAConflictController.h"
+#import <UIKit/UIKit.h>
 #import "CALogStore.h"
 #import "CAWorkbenchController.h"
 #import <Preferences/PSSpecifier.h>
