@@ -4,6 +4,7 @@
 #import "CAWorkbenchController.h"
 #import "CALogStore.h"
 #import "CAReportViewController.h"
+#import "CAConflictController.h"
 #import <Preferences/PSSpecifier.h>
 #import <Preferences/PSTableCell.h>
 
@@ -34,7 +35,20 @@
             [items addObject:row];
         }
 
-        NSDictionary *diagnostics=[[CALogStore sharedStore] scanDiagnostics];
+        NSArray *conflicts=[CAConflictController summaryForReports:reports limit:3];
+        PSSpecifier *conflictGroup=[PSSpecifier preferenceSpecifierNamed:@"疑似冲突插件" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
+        [conflictGroup setProperty:@"按故障线程证据排序；仅供排查，不等于确定根因。" forKey:@"footerText"]; [items addObject:conflictGroup];
+        if (conflicts.count) {
+            for (NSDictionary *s in conflicts) {
+                NSUInteger main=[s[@"main"] unsignedIntegerValue], part=[s[@"participation"] unsignedIntegerValue];
+                NSString *label=[NSString stringWithFormat:@"%@ · %@ %lu 次 · 参与 %lu 次",s[@"name"],main?@"主嫌疑":@"参与",(unsigned long)(main?:part),(unsigned long)part];
+                [items addObject:[PSSpecifier preferenceSpecifierNamed:label target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
+            }
+        } else {
+            [items addObject:[PSSpecifier preferenceSpecifierNamed:@"正在等待日志扫描结果…" target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
+        }
+        PSSpecifier *allConflicts=[PSSpecifier preferenceSpecifierNamed:@"查看全部疑似冲突插件" target:nil set:nil get:nil detail:[CAConflictController class] cell:PSLinkCell edit:nil]; [items addObject:allConflicts];
+
         PSSpecifier *status=[PSSpecifier preferenceSpecifierNamed:@"扫描状态" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
         [status setProperty:@"CrashReporter 目录与解析器状态" forKey:@"footerText"];
         [items addObject:status];
@@ -49,7 +63,7 @@
         [items addObject:ai];
 
         [items addObject:[PSSpecifier preferenceSpecifierNamed:@"AI 分析历史" target:nil set:nil get:nil detail:[CAHistoryController class] cell:PSLinkCell edit:nil]];
-        PSSpecifier *about=[PSSpecifier preferenceSpecifierNamed:@"关于 · CrashAnalyzer 1.1.2" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
+        PSSpecifier *about=[PSSpecifier preferenceSpecifierNamed:@"关于 · CrashAnalyzer 1.1.3" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
         [about setProperty:@"第四版诊断工作台 · Build 10\nAuthor / Maintainer: MoWang\n已加载模块不是已证实根因；实测案例只是用户记录。" forKey:@"footerText"]; [items addObject:about];
         PSSpecifier *refresh=[PSSpecifier preferenceSpecifierNamed:@"重新扫描" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
         refresh.buttonAction=@selector(reloadNow:);
