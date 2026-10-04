@@ -21,7 +21,9 @@ int main(void) {
         for(NSString *key in @[CAAutoSaveCases,CAUseHistoricalCases,CAOnlyValidatedCases])Check([s settingEnabled:key],@"defaults enabled");
         Check(![s saveUnverifiedAnswer:@" \n" forReport:r],@"no blank answers");
         Check([s saveUnverifiedAnswer:@"first answer" forReport:r],@"save reference");
+        Check([[s caseWithID:caseID][@"source"] isEqual:@"AI"] && [[s caseWithID:caseID][@"reportKey"] length]>0, @"AI reference keeps report identity");
         Check(s.allCases.count==1 && ![s matchingCaseForReport:r],@"unverified visible but default not adopted");
+        Check([s matchingAIReferenceForReport:r]!=nil, @"unverified AI reference is displayable");
         [defaults setBool:NO forKey:CAOnlyValidatedCases];
         Check([s matchingCaseForReport:r]!=nil,@"opt-in unverified adoption");
         Check([s saveUnverifiedAnswer:@"second failure" forReport:other] && s.allCases.count==2,@"distinct failures not overwritten");

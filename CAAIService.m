@@ -59,7 +59,11 @@ static NSString *ChatURL(NSString *raw) {
 - (void)cancelAnalysis { [_active cancel]; }
 - (void)runPrepared:(NSDictionary *)p report:(NSDictionary *)report fresh:(BOOL)fresh completion:(void (^)(NSString *,NSError *))completion {
     if (_active) { completion(nil,Failure(@"已有请求进行中，请等待或取消。")); return; }
-    if (!fresh) for (NSDictionary *entry in [self history]) if ([entry[@"key"] isEqual:p[@"key"]]) { completion([NSString stringWithFormat:@"精确 payload 缓存（不收费）\n模型：%@ · 时间：%@ · 范围：%@\n仅供参考，不代表本次确定根因。\n\n%@",entry[@"model"],entry[@"time"],entry[@"scope"],entry[@"answer"]],nil); return; }
+    if (!fresh) {
+        NSDictionary *reference=[[CACaseStore sharedStore] matchingAIReferenceForReport:report];
+        if (reference) { completion([NSString stringWithFormat:@"之前类似日志的 AI 参考（不收费，未联网）\n模型：%@ · 时间：%@ · 范围：%@\n仅供参考，不代表本次确定根因。\n\n%@",reference[@"model"] ?: @"未知",reference[@"createdAt"] ?: @"未知",reference[@"scope"] ?: @"未知",reference[@"answer"] ?: @""],nil); return; }
+        for (NSDictionary *entry in [self history]) if ([entry[@"key"] isEqual:p[@"key"]]) { completion([NSString stringWithFormat:@"精确 payload 缓存（不收费）\n模型：%@ · 时间：%@ · 范围：%@\n仅供参考，不代表本次确定根因。\n\n%@",entry[@"model"],entry[@"time"],entry[@"scope"],entry[@"answer"]],nil); return; }
+    }
     NSMutableURLRequest *request=[self request:p[@"endpoint"] body:p[@"data"]]; if(!request){completion(nil,Failure(@"HTTPS 接口无效。"));return;}
     _active=[[[self session] dataTaskWithRequest:request completionHandler:^(NSData *data,NSURLResponse *response,NSError *networkError){
         NSError *error=networkError; NSInteger status=[response isKindOfClass:NSHTTPURLResponse.class]?[(NSHTTPURLResponse *)response statusCode]:0;
@@ -69,8 +73,8 @@ static NSString *ChatURL(NSString *raw) {
             [self->_active release]; self->_active=nil;
             if (text && !error) {
                 BOOL saved=[CAWorkbench saveAnswer:text key:p[@"key"] model:p[@"model"] scope:p[@"scope"] path:[self historyPath]];
-                [[CACaseStore sharedStore] saveUnverifiedAnswer:text forReport:report];
-                shown=[NSString stringWithFormat:@"AI 参考；不是确定根因\n模型：%@ · 时间：%@ · 范围：%@\n%@\n\n%@",p[@"model"],[NSDate date].description,p[@"scope"],saved?@"已保存历史":@"历史保存失败（目录或容量限制）",text];
+                BOOL referenceSaved=[[CACaseStore sharedStore] saveAIReference:text forReport:report model:p[@"model"] scope:p[@"scope"]];
+                shown=[NSString stringWithFormat:@"AI 参考；不是确定根因\n模型：%@ · 时间：%@ · 范围：%@\n%@\n%@\n\n%@",p[@"model"],[NSDate date].description,p[@"scope"],saved?@"已保存历史":@"历史保存失败（目录或容量限制）",referenceSaved?@"已关联日志指纹/证据":([NSUserDefaults.standardUserDefaults boolForKey:CAAutoSaveCases]?@"日志关联保存失败（目录或容量限制）":@"自动保存 AI 参考已关闭，未写入日志历史"),text];
             }
             completion(shown,error);
         });

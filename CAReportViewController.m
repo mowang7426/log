@@ -96,6 +96,7 @@ static PSSpecifier *CAShortRow(NSString *text) {
 @implementation CAReportDetailController {
     NSDictionary *_report;
     NSDictionary *_match;
+    NSDictionary *_aiReference;
     NSDictionary *_human;
     NSString *_matchStatus;
     BOOL _loading;
@@ -106,7 +107,7 @@ static PSSpecifier *CAShortRow(NSString *text) {
     [super viewWillAppear:animated];
     // specifiers are immutable for this controller lifetime; returning must not reread the IPS file.
 }
-- (void)dealloc { [_report release]; [_match release]; [_human release]; [_matchStatus release]; [super dealloc]; }
+- (void)dealloc { [_report release]; [_match release]; [_aiReference release]; [_human release]; [_matchStatus release]; [super dealloc]; }
 - (void)loadReport {
     if (_loading || _loaded) return;
     _loading=YES;
@@ -118,12 +119,13 @@ static PSSpecifier *CAShortRow(NSString *text) {
             NSDictionary *report=snapshot ?: [[CALogStore sharedStore] reportAtPath:path];
             CACaseStore *cases=[CACaseStore sharedStore];
             NSDictionary *match=report ? [cases matchingCaseForReport:report] : nil;
+            NSDictionary *aiReference=report ? [cases matchingAIReferenceForReport:report] : nil;
             NSDictionary *human=report ? [[CALogStore sharedStore] humanReadableAnalysisForReport:report] : nil;
             NSString *status=![cases settingEnabled:CAUseHistoricalCases] ? @"历史案例检索已关闭" :
                 (![CACaseStore evidenceForReport:report] ? @"证据不足，未检索历史案例" :
-                (match ? ([match[@"confirmed"] boolValue] ? @"匹配到有用户实测记录的历史 AI 参考（不保证本次根因）" : @"匹配到未验证 AI 参考（已关闭仅实测限制）") : @"没有符合当前采用设置的精确历史案例"));
+                (aiReference ? @"匹配到之前类似日志的 AI 参考（未验证也可查看；不保证本次根因）" : @"没有符合当前采用设置的精确历史案例"));
             dispatch_async(dispatch_get_main_queue(), ^{
-                _report=[report retain]; _match=[match retain]; _human=[human retain]; _matchStatus=[status copy];
+                _report=[report retain]; _match=[match retain]; _aiReference=[aiReference retain]; _human=[human retain]; _matchStatus=[status copy];
                 _loaded=YES; _loading=NO;
                 [_specifiers release]; _specifiers=nil;
                 if (self.viewIfLoaded.window) [self reloadSpecifiers];
@@ -170,6 +172,13 @@ static PSSpecifier *CAShortRow(NSString *text) {
         }
         NSString *caseFooter=match ? [NSString stringWithFormat:@"本地案例：%@；用户实测：%@。仅本机匹配，不触发网络；不证明本次根因。",match[@"source"] ?: @"本地案例库",[match[@"confirmed"] boolValue] ? @"是" : @"否"] : matchStatus;
         [rows addObject:CAShortRow(matchStatus)];
+        if (_aiReference) {
+            NSString *meta=[NSString stringWithFormat:@"模型：%@ · 时间：%@ · 范围：%@ · 来源：%@\n%@\n\n%@",_aiReference[@"model"] ?: @"未知",_aiReference[@"createdAt"] ?: @"未知",_aiReference[@"scope"] ?: @"未知",_aiReference[@"source"] ?: @"AI",@"不确定性：未验证的历史参考；不覆盖本地事实，也不声称根因。",_aiReference[@"answer"] ?: @"无内容"];
+            [rows addObject:CAShortRow(@"之前类似日志的 AI 参考")];
+            [rows addObject:CAShortRow(meta)];
+        } else if ([[CACaseStore sharedStore] settingEnabled:CAAutoSaveCases] == NO) {
+            [rows addObject:CAShortRow(@"自动保存 AI 参考已关闭；新的 AI 结果不会关联到日志历史。")];
+        }
         NSMutableString *full=[NSMutableString stringWithFormat:@"%@\n\n发生了什么\n%@\n%@\n\n判断依据\n%@\n\n下一步\n%@\n\n判断把握与边界\n%@\n%@\n%@",CAAnalysisVersionTitle,human[@"title"],human[@"reason"],[human[@"evidence"] componentsJoinedByString:@"\n"],[human[@"actions"] componentsJoinedByString:@"\n"],human[@"confidence"],human[@"status"],caseFooter];
         if (match) [full appendFormat:@"\n案例 ID：%@\n用户实测记录：%@\n历史 AI 参考（非本次已确认根因）：%@",match[@"id"],match[@"testNote"] ?: @"无",match[@"answer"] ?: @"无"];
         [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"更多本地说明" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];

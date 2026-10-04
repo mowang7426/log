@@ -16,6 +16,8 @@ FOUNDATION_EXPORT NSString * const CAOnlyValidatedCases;
 - (NSDictionary *)summary; // total, unverified, validated, rejected
 - (NSDictionary *)caseWithID:(NSString *)caseID;
 - (NSDictionary *)matchingCaseForReport:(NSDictionary *)report;
+- (NSDictionary *)matchingAIReferenceForReport:(NSDictionary *)report;
+- (BOOL)saveAIReference:(NSString *)answer forReport:(NSDictionary *)report model:(NSString *)model scope:(NSString *)scope;
 - (BOOL)saveUnverifiedAnswer:(NSString *)answer forReport:(NSDictionary *)report;
 - (BOOL)recordTestNote:(NSString *)note forCase:(NSDictionary *)entry;
 - (BOOL)rejectCase:(NSDictionary *)entry;

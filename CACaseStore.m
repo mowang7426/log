@@ -111,22 +111,30 @@ static NSString *Evidence(NSDictionary *r) {
     if(!c || [c[@"rejected"] boolValue] || ([self settingEnabled:CAOnlyValidatedCases] && ![c[@"confirmed"] boolValue]))return nil;
     return [c[@"key"] isEqual:e[@"key"]] && [c[@"evidence"] isEqual:e[@"evidence"]]?c:nil;
 }
+- (NSDictionary *)matchingAIReferenceForReport:(NSDictionary *)r {
+    if(![self settingEnabled:CAUseHistoricalCases])return nil;
+    NSDictionary *e=[CACaseStore evidenceForReport:r]; if(!e)return nil;
+    NSDictionary *c=[self caseWithID:e[@"id"]];
+    return (!c || [c[@"rejected"] boolValue]) ? nil : ([c[@"key"] isEqual:e[@"key"]] && [c[@"evidence"] isEqual:e[@"evidence"]] ? c : nil);
+}
 - (BOOL)writeEntry:(NSDictionary *)c {
     if(!ValidEntry(c))return NO;
     if(![[NSFileManager defaultManager] createDirectoryAtPath:self.directory withIntermediateDirectories:YES attributes:nil error:nil])return NO;
     NSData *d=[NSJSONSerialization dataWithJSONObject:c options:0 error:nil];
     return d && [d writeToFile:[self pathForID:c[@"id"]] options:NSDataWritingAtomic error:nil];
 }
-- (BOOL)saveUnverifiedAnswer:(NSString *)answer forReport:(NSDictionary *)r {
+- (BOOL)saveAIReference:(NSString *)answer forReport:(NSDictionary *)r model:(NSString *)model scope:(NSString *)scope {
     @synchronized(self) {
-        if(![self settingEnabled:CAAutoSaveCases] || !S(answer).length)return NO;
+        if(![self settingEnabled:CAAutoSaveCases] || !S(answer).length || !S(model).length || ![@[@"structured",@"source"] containsObject:scope])return NO;
         NSDictionary *e=[CACaseStore evidenceForReport:r]; if(!e)return NO;
-        // Do not erase a rejection or attach an old test note to a new AI answer.
-        if([self caseWithID:e[@"id"]])return YES;
+        NSDictionary *existing=[self caseWithID:e[@"id"]]; if(existing)return YES;
         NSMutableDictionary *c=[NSMutableDictionary dictionaryWithDictionary:e];
-        [c addEntriesFromDictionary:@{@"schemaVersion":@2,@"answer":S(answer),@"source":@"AI",@"createdAt":[NSDate date].description,@"confirmed":@NO,@"rejected":@NO}];
+        [c addEntriesFromDictionary:@{@"schemaVersion":@2,@"answer":S(answer),@"source":@"AI",@"createdAt":[NSDate date].description,@"confirmed":@NO,@"rejected":@NO,@"model":S(model),@"scope":scope,@"reportKey":e[@"key"],@"reportIdentity":e[@"id"]}];
         return [self writeEntry:c];
     }
+}
+- (BOOL)saveUnverifiedAnswer:(NSString *)answer forReport:(NSDictionary *)r {
+    return [self saveAIReference:answer forReport:r model:@"unknown" scope:@"structured"];
 }
 - (BOOL)recordTestNote:(NSString *)note forCase:(NSDictionary *)entry {
     @synchronized(self) {
