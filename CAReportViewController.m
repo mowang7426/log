@@ -165,34 +165,38 @@ static PSSpecifier *CAShortRow(NSString *text) {
         ai.buttonAction=@selector(analyzeWithAI:); [rows addObject:ai];
         PSSpecifier *version=[PSSpecifier preferenceSpecifierNamed:@"本地快速说明" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
         [version setProperty:@"依据本机日志字段整理；可能原因不是已确认根因。AI 分析需另行确认。" forKey:@"footerText"]; [rows addObject:version];
-        NSArray *readableGroups=@[@[@"发生了什么",@[human[@"title"],human[@"reason"]]], @[@"判断依据",human[@"evidence"]], @[@"下一步",human[@"actions"]], @[@"判断把握与边界",@[human[@"confidence"]]]];
-        for (NSArray *groupData in readableGroups) {
-            [rows addObject:[PSSpecifier preferenceSpecifierNamed:groupData[0] target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
-            for (NSString *text in groupData[1]) [rows addObject:CAShortRow(text)];
-        }
-        NSString *caseFooter=match ? [NSString stringWithFormat:@"本地案例：%@；用户实测：%@。仅本机匹配，不触发网络；不证明本次根因。",match[@"source"] ?: @"本地案例库",[match[@"confirmed"] boolValue] ? @"是" : @"否"] : matchStatus;
-        [rows addObject:CAShortRow(matchStatus)];
+        // 首屏只保留可执行的结论；原始字段、路径和完整 AI 原文放到下方入口。
+        [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"这次发生了什么" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
+        [rows addObject:CAShortRow(human[@"title"] ?: @"暂时无法判断退出原因")];
+        [rows addObject:CAShortRow(human[@"reason"] ?: @"暂无可读结论")];
+        [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"AI 之前怎么判断" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
         if (_aiReference) {
-            NSString *meta=[NSString stringWithFormat:@"模型：%@ · 时间：%@ · 范围：%@ · 来源：%@\n%@\n\n%@",_aiReference[@"model"] ?: @"未知",_aiReference[@"createdAt"] ?: @"未知",_aiReference[@"scope"] ?: @"未知",_aiReference[@"source"] ?: @"AI",@"不确定性：未验证的历史参考；不覆盖本地事实，也不声称根因。",_aiReference[@"answer"] ?: @"无内容"];
-            [rows addObject:CAShortRow(@"之前类似日志的 AI 参考")];
-            [rows addObject:CAShortRow(meta)];
-        } else if ([[CACaseStore sharedStore] settingEnabled:CAAutoSaveCases] == NO) {
-            [rows addObject:CAShortRow(@"自动保存 AI 参考已关闭；新的 AI 结果不会关联到日志历史。")];
+            NSString *answer=_aiReference[@"answer"];
+            NSString *preview=[self boundedPreview:answer];
+            [rows addObject:CAShortRow(@"这是历史 AI 参考，不是本次已确认根因；不会覆盖本地事实。")];
+            [rows addObject:CAShortRow([NSString stringWithFormat:@"原文预览：%@",preview])];
+            PSSpecifier *fullAI=[PSSpecifier preferenceSpecifierNamed:@"查看完整 AI 原文" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
+            [fullAI setProperty:answer ?: @"暂无内容" forKey:@"aiAnswer"]; fullAI.buttonAction=@selector(showAIAnswer:); [rows addObject:fullAI];
+        } else {
+            [rows addObject:CAShortRow(matchStatus ?: @"没有符合当前设置的精确历史参考")];
         }
-        NSMutableString *full=[NSMutableString stringWithFormat:@"%@\n\n发生了什么\n%@\n%@\n\n判断依据\n%@\n\n下一步\n%@\n\n判断把握与边界\n%@\n%@\n%@",CAAnalysisVersionTitle,human[@"title"],human[@"reason"],[human[@"evidence"] componentsJoinedByString:@"\n"],[human[@"actions"] componentsJoinedByString:@"\n"],human[@"confidence"],human[@"status"],caseFooter];
-        if (match) [full appendFormat:@"\n案例 ID：%@\n用户实测记录：%@\n历史 AI 参考（非本次已确认根因）：%@",match[@"id"],match[@"testNote"] ?: @"无",match[@"answer"] ?: @"无"];
-        [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"更多本地说明" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
-        PSSpecifier *analysis=[PSSpecifier preferenceSpecifierNamed:@"查看完整本地说明" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
+        [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"现在建议先做什么" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
+        for (NSString *action in ([human[@"actions"] isKindOfClass:[NSArray class]] ? human[@"actions"] : @[])) [rows addObject:CAShortRow(action)];
+        [rows addObject:CAShortRow(human[@"confidence"] ?: @"根因未确认")];
+        [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"是否有相似历史日志" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
+        NSString *caseFooter=match ? [NSString stringWithFormat:@"找到本地精确匹配（来源：%@；用户实测：%@）。仅供参考，不证明本次根因。",match[@"source"] ?: @"本地案例库",[match[@"confirmed"] boolValue] ? @"有" : @"无"] : (matchStatus ?: @"没有符合当前采用设置的精确历史案例");
+        [rows addObject:CAShortRow(caseFooter)];
+        if (!match && ![[CACaseStore sharedStore] settingEnabled:CAAutoSaveCases]) [rows addObject:CAShortRow(@"自动保存 AI 参考已关闭；新的 AI 结果不会关联到日志历史。")];
+        [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"详细信息 / 技术证据" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
+        NSMutableString *full=[NSMutableString stringWithFormat:@"%@\n\n这次发生了什么\n%@\n%@\n\nAI 之前怎么判断\n%@\n\n现在建议先做什么\n%@\n\n判断把握与边界\n%@\n%@\n%@",CAAnalysisVersionTitle,human[@"title"],human[@"reason"],[human[@"evidence"] componentsJoinedByString:@"\n"],[human[@"actions"] componentsJoinedByString:@"\n"],human[@"confidence"],human[@"status"],caseFooter];
+        PSSpecifier *analysis=[PSSpecifier preferenceSpecifierNamed:@"查看完整本地说明与证据" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
         [analysis setProperty:full forKey:@"analysisText"]; analysis.buttonAction=@selector(showAnalysis:); [rows addObject:analysis];
-        [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"高级诊断/高级工具" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
         PSSpecifier *workbench=[PSSpecifier preferenceSpecifierNamed:@"线程、模块与 AI 请求工作台" target:nil set:nil get:nil detail:[CAWorkbenchController class] cell:PSLinkCell edit:nil];
         [workbench setProperty:r[@"path"] ?: @"" forKey:@"reportPath"]; [rows addObject:workbench];
-        [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"报告概览" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
-        for (NSArray *f in @[@[@"应用",r[@"normalizedProcessName"] ?: @"未提供"],@[@"时间",r[@"timestamp"] ?: r[@"captureTime"] ?: @"未提供"],@[@"类型",r[@"category"] ?: @"其他"]]) [rows addObject:CAShortRow([NSString stringWithFormat:@"%@：%@",f[0],f[1]])];
-        PSSpecifier *more=[PSSpecifier preferenceSpecifierNamed:@"技术字段" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil]; more.buttonAction=@selector(showMoreDetails:); [rows addObject:more];
         PSSpecifier *source=[PSSpecifier preferenceSpecifierNamed:@"查看原始日志文件" target:nil set:nil get:nil detail:[CAReportSourceController class] cell:PSLinkCell edit:nil];
         [source setProperty:r[@"path"] ?: @"" forKey:@"reportPath"]; [rows addObject:source];
         PSSpecifier *copyPath=[PSSpecifier preferenceSpecifierNamed:@"复制原始日志路径" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil]; copyPath.buttonAction=@selector(copyReportPath:); [rows addObject:copyPath];
+        PSSpecifier *more=[PSSpecifier preferenceSpecifierNamed:@"查看技术字段、ID 与原始异常" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil]; more.buttonAction=@selector(showMoreDetails:); [rows addObject:more];
         for (PSSpecifier *row in rows) if (row.cellType==PSStaticTextCell) [row setProperty:[CAWrappingTextCell class] forKey:@"cellClass"];
         _specifiers=[rows mutableCopy];
     }
@@ -206,6 +210,20 @@ static PSSpecifier *CAShortRow(NSString *text) {
     UIFont *font=[UIFont preferredFontForTextStyle:UIFontTextStyleBody];
     CGRect box=[text boundingRectWithSize:CGSizeMake(width,CGFLOAT_MAX) options:NSStringDrawingUsesLineFragmentOrigin|NSStringDrawingUsesFontLeading attributes:@{NSFontAttributeName:font} context:nil];
     return MAX(52.0,ceil(box.size.height)+28.0);
+}
+- (NSString *)boundedPreview:(id)value {
+    if (![value isKindOfClass:[NSString class]] || ![(NSString *)value length]) return @"暂无内容";
+    NSString *text=(NSString *)value;
+    NSUInteger limit=320;
+    if (text.length<=limit) return text;
+    return [[text substringToIndex:limit] stringByAppendingString:@"\n…已折叠，查看完整 AI 原文。"];
+}
+- (void)showAIAnswer:(PSSpecifier *)specifier {
+    NSString *text=[specifier propertyForKey:@"aiAnswer"] ?: @"暂无内容";
+    UIAlertController *alert=[UIAlertController alertControllerWithTitle:@"完整 AI 原文（历史参考）" message:text preferredStyle:UIAlertControllerStyleAlert];
+    [alert addAction:[UIAlertAction actionWithTitle:@"复制" style:UIAlertActionStyleDefault handler:^(UIAlertAction *a){ [UIPasteboard generalPasteboard].string=text; }]];
+    [alert addAction:[UIAlertAction actionWithTitle:@"关闭" style:UIAlertActionStyleCancel handler:nil]];
+    [self presentViewController:alert animated:YES completion:nil];
 }
 - (void)showMoreDetails:(PSSpecifier *)specifier {
     (void)specifier;
