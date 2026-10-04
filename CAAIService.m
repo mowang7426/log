@@ -101,4 +101,12 @@ static NSString *ChatURL(NSString *raw) {
     if(!p){completion(NO,e.localizedDescription);return;}
     [self runPrepared:p report:r fresh:YES completion:^(NSString *text,NSError *error){completion(!error,error.localizedDescription ?: text);}];
 }
+- (BOOL)deleteHistoryEntry:(NSDictionary *)entry {
+    if (![entry isKindOfClass:NSDictionary.class] || [entry[@"key"] length]!=64) return NO;
+    NSMutableArray *a=[NSMutableArray array]; BOOL removed=NO;
+    for (NSDictionary *e in [self history]) { if (!removed && [e[@"key"] isEqual:entry[@"key"]] && [e[@"time"] isEqual:entry[@"time"]] && [e[@"answer"] isEqual:entry[@"answer"]]) { removed=YES; continue; } [a addObject:e]; }
+    if (!removed) return NO; NSData *d=[NSJSONSerialization dataWithJSONObject:a options:NSJSONWritingSortedKeys error:NULL]; return d && [d writeToFile:[self historyPath] options:NSDataWritingAtomic error:NULL];
+}
+- (NSUInteger)deleteAllHistory { NSUInteger n=[self history].count; if (!n) return 0; return [[NSFileManager defaultManager] removeItemAtPath:[self historyPath] error:NULL] ? n : 0; }
+- (NSUInteger)historyStorageBytes { return [[[NSFileManager defaultManager] attributesOfItemAtPath:[self historyPath] error:NULL][NSFileSize] unsignedIntegerValue]; }
 @end

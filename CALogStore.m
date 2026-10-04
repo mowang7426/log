@@ -154,6 +154,12 @@ static NSString * const CAUnknown = @"其他";
     if (_directoryTimer) { dispatch_source_cancel(_directoryTimer); dispatch_release(_directoryTimer); }
     [_fileEntries release]; [_reportsSnapshot release]; [_diagnosticsSnapshot release]; [_analysisLock release]; [super dealloc];
 }
+- (NSArray *)_deletableReportPaths { NSMutableArray *a=[NSMutableArray array]; for(NSString *p in [self ipsPaths]) [a addObject:p]; return a; }
+- (NSUInteger)countReportsAtPaths:(NSArray *)paths { NSSet *v=[NSSet setWithArray:[self _deletableReportPaths]]; NSUInteger n=0; for(id p in paths) if([p isKindOfClass:NSString.class]&&[v containsObject:p])n++; return n; }
+- (NSUInteger)deleteReportsAtPaths:(NSArray *)paths { NSSet *v=[NSSet setWithArray:[self _deletableReportPaths]]; NSUInteger n=0; for(id p in paths) if([p isKindOfClass:NSString.class]&&[v containsObject:p]&&[NSFileManager.defaultManager removeItemAtPath:p error:NULL])n++; if(n)[self refreshReports]; return n; }
+- (NSUInteger)deleteAllReports { return [self deleteReportsAtPaths:[self _deletableReportPaths]]; }
+- (NSDictionary *)storageUsage { unsigned long long raw=0,cache=0; NSUInteger count=0; NSFileManager *fm=NSFileManager.defaultManager; for(NSString *p in [self _deletableReportPaths]){NSDictionary *a=[fm attributesOfItemAtPath:p error:NULL];if(a){raw+=[a[NSFileSize] unsignedLongLongValue];count++;}} NSString *dir=[self analysisCacheDirectory]; for(NSString *r in [fm enumeratorAtPath:dir]){NSDictionary *a=[fm attributesOfItemAtPath:[dir stringByAppendingPathComponent:r] error:NULL];cache+=[a[NSFileSize] unsignedLongLongValue];} return @{@"rawLogBytes":@(raw),@"rawLogCount":@(count),@"analysisCacheBytes":@(cache),@"totalBytes":@(raw+cache),@"rawLogsStatus":@"真实统计",@"analysisCacheStatus":@"真实统计"};
+}
 - (void)refreshReports {
     // Coalesce taps and concurrent controllers. No lock is held during disk I/O,
     // dispatch, or notification delivery. Copied dispatch blocks retain self in MRC.

@@ -37,4 +37,9 @@ FOUNDATION_EXPORT NSString * const CALogStoreDidRefreshNotification;
 // confirmed is a boolean, recommendations is an array of strings, createdAt is UTC ISO-8601.
 - (BOOL)saveAnalysisCache:(NSDictionary *)cache forFingerprint:(NSString *)fingerprint;
 - (NSString *)diagnosisForReport:(NSDictionary *)report;
+// Storage & privacy: operations never touch AI history.
+- (NSDictionary *)storageUsage;
+- (NSUInteger)countReportsAtPaths:(NSArray *)paths;
+- (NSUInteger)deleteReportsAtPaths:(NSArray *)paths;
+- (NSUInteger)deleteAllReports;
 @end
