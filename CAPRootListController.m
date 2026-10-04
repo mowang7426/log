@@ -16,7 +16,7 @@
 - (id)specifiers {
     if (!_specifiers) {
         NSMutableArray *items=[NSMutableArray array];
-        NSArray *reports=CALogStore.sharedStore.reports;
+        NSArray *reports=[CALogStore sharedStore].reports;
         PSSpecifier *g=[PSSpecifier preferenceSpecifierNamed:@"高级诊断/高级工具" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
         [g setProperty:@"以下信息面向需要进一步核对的用户；证据相关不代表确定根因。" forKey:@"footerText"]; [items addObject:g];
         NSArray *conflicts=[CAConflictController summaryForReports:reports limit:3];
@@ -25,7 +25,7 @@
             [row setProperty:s forKey:@"conflictStats"]; [items addObject:row];
         }
         PSSpecifier *all=[PSSpecifier preferenceSpecifierNamed:@"查看全部疑似冲突插件" target:nil set:nil get:nil detail:[CAConflictController class] cell:PSLinkCell edit:nil]; [items addObject:all];
-        NSDictionary *d=CALogStore.sharedStore.scanDiagnostics;
+        NSDictionary *d=[CALogStore sharedStore].scanDiagnostics;
         [items addObject:[PSSpecifier preferenceSpecifierNamed:@"扫描状态" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
         [items addObject:[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"%@ · 发现 %@ 个 · 解析 %@ 个",[d[@"exists"] boolValue]?@"日志目录可访问":@"日志目录不可访问",d[@"matched"]?:@0,d[@"parsed"]?:@0] target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
         [items addObject:[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"最后扫描：%@\n新增/变化 %@ · 复用 %@ · 移除 %@\n%@",d[@"lastScannedAt"]?:@"尚未扫描",d[@"changed"]?:@0,d[@"reused"]?:@0,d[@"removed"]?:@0,d[@"error"]?:@""] target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
@@ -41,7 +41,7 @@
 - (id)specifiers {
     if (!_specifiers) {
         NSMutableArray *items=[NSMutableArray array];
-        NSArray *reports=CALogStore.sharedStore.reports;
+        NSArray *reports=[CALogStore sharedStore].reports;
         PSSpecifier *head=[PSSpecifier preferenceSpecifierNamed:@"CrashAnalyzer · AI 日志分析" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
         [head setProperty:@"本地解析只描述日志证据，不会确认根因；AI 分析需你确认请求。" forKey:@"footerText"]; [items addObject:head];
         PSSpecifier *recent=[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"最近日志 · %lu 条",(unsigned long)reports.count] target:nil set:nil get:nil detail:[CARecentReportsViewController class] cell:PSLinkCell edit:nil];
@@ -65,9 +65,9 @@
     } return _specifiers;
 }
 - (CGFloat)tableView:(UITableView *)t heightForRowAtIndexPath:(NSIndexPath *)i { PSSpecifier *s=[self specifierAtIndexPath:i]; return [s propertyForKey:@"cellClass"]==[CAEvidenceWrappingCell class]?CAEvidenceRowHeight(t,s):[super tableView:t heightForRowAtIndexPath:i]; }
-- (void)viewDidLoad { [super viewDidLoad]; self.title=@"分析日志"; [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(logStoreDidRefresh:) name:CALogStoreDidRefreshNotification object:CALogStore.sharedStore; if (!CALogStore.sharedStore.reportsReady) [CALogStore.sharedStore refreshReports]; }
-- (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; if (!_specifiers) [self reloadSpecifiers]; [CALogStore.sharedStore refreshReports]; }
+- (void)viewDidLoad { [super viewDidLoad]; self.title=@"分析日志"; [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(logStoreDidRefresh:) name:CALogStoreDidRefreshNotification object:[CALogStore sharedStore]; if (![CALogStore sharedStore].reportsReady) [[CALogStore sharedStore] refreshReports]; }
+- (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; if (!_specifiers) [self reloadSpecifiers]; [[CALogStore sharedStore] refreshReports]; }
 - (void)logStoreDidRefresh:(NSNotification *)note { (void)note; [_specifiers release]; _specifiers=nil; if (self.viewIfLoaded.window) [self reloadSpecifiers]; }
 - (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; [super dealloc]; }
-- (void)reloadNow:(PSSpecifier *)specifier { (void)specifier; [CALogStore.sharedStore refreshReports]; }
+- (void)reloadNow:(PSSpecifier *)specifier { (void)specifier; [[CALogStore sharedStore] refreshReports]; }
 @end
