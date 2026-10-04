@@ -65,7 +65,7 @@
     } return _specifiers;
 }
 - (CGFloat)tableView:(UITableView *)t heightForRowAtIndexPath:(NSIndexPath *)i { PSSpecifier *s=[self specifierAtIndexPath:i]; return [s propertyForKey:@"cellClass"]==[CAEvidenceWrappingCell class]?CAEvidenceRowHeight(t,s):[super tableView:t heightForRowAtIndexPath:i]; }
-- (void)viewDidLoad { [super viewDidLoad]; self.title=@"分析日志"; [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(logStoreDidRefresh:) name:CALogStoreDidRefreshNotification object:[CALogStore sharedStore]; if (![CALogStore sharedStore].reportsReady) [[CALogStore sharedStore] refreshReports]; }
+- (void)viewDidLoad { [super viewDidLoad]; self.title=@"分析日志"; [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(logStoreDidRefresh:) name:CALogStoreDidRefreshNotification object:[CALogStore sharedStore]]; if (![CALogStore sharedStore].reportsReady) [[CALogStore sharedStore] refreshReports]; }
 - (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; if (!_specifiers) [self reloadSpecifiers]; [[CALogStore sharedStore] refreshReports]; }
 - (void)logStoreDidRefresh:(NSNotification *)note { (void)note; [_specifiers release]; _specifiers=nil; if (self.viewIfLoaded.window) [self reloadSpecifiers]; }
 - (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; [super dealloc]; }
