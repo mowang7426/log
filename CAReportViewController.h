@@ -6,6 +6,8 @@
 - (NSString *)reportCategory;
 @end
 
+@interface CARecentReportsViewController : CAReportViewController
+@end
 @interface CACrashReportViewController : CAReportViewController
 @end
 @interface CAMemoryReportViewController : CAReportViewController

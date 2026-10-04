@@ -43,8 +43,8 @@ static PSSpecifier *CAShortRow(NSString *text) {
     if (!_specifiers) {
         NSMutableArray *rows=[NSMutableArray array];
         NSString *category=[self reportCategory];
-        NSArray *reports=category.length ? [[CALogStore sharedStore] reportsForCategory:category] : @[];
-        self.title=category ?: @"分类未绑定";
+        NSArray *reports=category.length ? [[CALogStore sharedStore] reportsForCategory:category] : [[CALogStore sharedStore] reports];
+        self.title=category ?: @"最近日志";
         {
             PSSpecifier *head=[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"%@ · %lu 条",self.title,(unsigned long)reports.count] target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
             [head setProperty:@"点击一条日志查看详细分析" forKey:@"footerText"];
@@ -73,6 +73,9 @@ static PSSpecifier *CAShortRow(NSString *text) {
 - (void)viewWillAppear:(BOOL)a {[super viewWillAppear:a];[CALogStore.sharedStore refreshReports];}
 - (void)scanUpdated:(NSNotification *)n {(void)n;[_specifiers release];_specifiers=nil;if(self.viewIfLoaded.window)[self reloadSpecifiers];}
 - (void)dealloc {[[NSNotificationCenter defaultCenter] removeObserver:self];[super dealloc];}
+@end
+@implementation CARecentReportsViewController
+- (NSString *)reportCategory { return nil; }
 @end
 @implementation CACrashReportViewController
 - (NSString *)reportCategory { return @"崩溃"; }
@@ -152,42 +155,35 @@ static PSSpecifier *CAShortRow(NSString *text) {
         self.title=_report[@"procName"] ?: _report[@"app_name"] ?: @"日志详情";
         NSMutableArray *rows=[NSMutableArray array];
         NSDictionary *r=_report;
-        [rows addObject:CAShortRow([NSString stringWithFormat:@"原始日志文件：%@\n完整路径：%@",r[@"fileName"] ?: @"未提供",r[@"path"] ?: @"未提供"])];
-        PSSpecifier *copyPath=[PSSpecifier preferenceSpecifierNamed:@"复制日志完整路径" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];copyPath.buttonAction=@selector(copyReportPath:);[rows addObject:copyPath];
         NSDictionary *match=_match;
         NSString *matchStatus=_matchStatus;
         NSDictionary *human=_human;
-        PSSpecifier *version=[PSSpecifier preferenceSpecifierNamed:@"本地分析" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
-        [version setProperty:@"仅依据本地日志字段生成；不触发网络，根因仍需核对。" forKey:@"footerText"]; [rows addObject:version];
-        NSArray *readableGroups=@[@[@"为什么会退出",@[human[@"title"],human[@"reason"]]], @[@"判断依据",human[@"evidence"]], @[@"建议处理",human[@"actions"]], @[@"结论状态",@[human[@"confidence"]]]];
+        PSSpecifier *ai=[PSSpecifier preferenceSpecifierNamed:@"AI 分析此日志" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
+        [ai setProperty:@"先检查发送内容与费用，再由你确认是否请求；取消和历史结果仍可在工作台查看。" forKey:@"footerText"];
+        ai.buttonAction=@selector(analyzeWithAI:); [rows addObject:ai];
+        PSSpecifier *version=[PSSpecifier preferenceSpecifierNamed:@"本地快速说明" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
+        [version setProperty:@"依据本机日志字段整理；可能原因不是已确认根因。AI 分析需另行确认。" forKey:@"footerText"]; [rows addObject:version];
+        NSArray *readableGroups=@[@[@"发生了什么",@[human[@"title"],human[@"reason"]]], @[@"判断依据",human[@"evidence"]], @[@"下一步",human[@"actions"]], @[@"判断把握与边界",@[human[@"confidence"]]]];
         for (NSArray *groupData in readableGroups) {
             [rows addObject:[PSSpecifier preferenceSpecifierNamed:groupData[0] target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
             for (NSString *text in groupData[1]) [rows addObject:CAShortRow(text)];
         }
         NSString *caseFooter=match ? [NSString stringWithFormat:@"本地案例：%@；用户实测：%@。仅本机匹配，不触发网络；不证明本次根因。",match[@"source"] ?: @"本地案例库",[match[@"confirmed"] boolValue] ? @"是" : @"否"] : matchStatus;
         [rows addObject:CAShortRow(matchStatus)];
-        if (match) {
-            [rows addObject:CAShortRow([NSString stringWithFormat:@"本地案例来源：%@",match[@"source"] ?: @"未知"])];
-            [rows addObject:CAShortRow([NSString stringWithFormat:@"用户实测：%@（非本次根因保证）",[match[@"confirmed"] boolValue] ? @"是" : @"否"])];
-        }
-        NSMutableString *full=[NSMutableString stringWithFormat:@"%@\n\n为什么会退出\n%@\n%@\n\n判断依据\n%@\n\n建议处理\n%@\n\n结论状态\n%@\n%@\n%@",CAAnalysisVersionTitle,human[@"title"],human[@"reason"],[human[@"evidence"] componentsJoinedByString:@"\n"],[human[@"actions"] componentsJoinedByString:@"\n"],human[@"confidence"],human[@"status"],caseFooter];
+        NSMutableString *full=[NSMutableString stringWithFormat:@"%@\n\n发生了什么\n%@\n%@\n\n判断依据\n%@\n\n下一步\n%@\n\n判断把握与边界\n%@\n%@\n%@",CAAnalysisVersionTitle,human[@"title"],human[@"reason"],[human[@"evidence"] componentsJoinedByString:@"\n"],[human[@"actions"] componentsJoinedByString:@"\n"],human[@"confidence"],human[@"status"],caseFooter];
         if (match) [full appendFormat:@"\n案例 ID：%@\n用户实测记录：%@\n历史 AI 参考（非本次已确认根因）：%@",match[@"id"],match[@"testNote"] ?: @"无",match[@"answer"] ?: @"无"];
-        [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"分析操作" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
-        [full appendFormat:@"\n\n底层本地分析 / 既有参考\n%@",r[@"diagnosis"] ?: @"暂无诊断"];
-        PSSpecifier *analysis=[PSSpecifier preferenceSpecifierNamed:@"查看完整本地分析" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
+        [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"更多本地说明" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
+        PSSpecifier *analysis=[PSSpecifier preferenceSpecifierNamed:@"查看完整本地说明" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
         [analysis setProperty:full forKey:@"analysisText"]; analysis.buttonAction=@selector(showAnalysis:); [rows addObject:analysis];
-        PSSpecifier *workbench=[PSSpecifier preferenceSpecifierNamed:@"诊断工作台" target:nil set:nil get:nil detail:[CAWorkbenchController class] cell:PSLinkCell edit:nil];
+        [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"高级诊断/高级工具" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
+        PSSpecifier *workbench=[PSSpecifier preferenceSpecifierNamed:@"线程、模块与 AI 请求工作台" target:nil set:nil get:nil detail:[CAWorkbenchController class] cell:PSLinkCell edit:nil];
         [workbench setProperty:r[@"path"] ?: @"" forKey:@"reportPath"]; [rows addObject:workbench];
-        PSSpecifier *ai=[PSSpecifier preferenceSpecifierNamed:@"AI 分析此日志（预检）" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
-        ai.buttonAction=@selector(analyzeWithAI:); [rows addObject:ai];
         [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"报告概览" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
         for (NSArray *f in @[@[@"应用",r[@"normalizedProcessName"] ?: @"未提供"],@[@"时间",r[@"timestamp"] ?: r[@"captureTime"] ?: @"未提供"],@[@"类型",r[@"category"] ?: @"其他"]]) [rows addObject:CAShortRow([NSString stringWithFormat:@"%@：%@",f[0],f[1]])];
-        PSSpecifier *more=[PSSpecifier preferenceSpecifierNamed:@"技术详情" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
-        more.buttonAction=@selector(showMoreDetails:);
-        [rows addObject:more];
-        PSSpecifier *source=[PSSpecifier preferenceSpecifierNamed:@"查看源文件" target:nil set:nil get:nil detail:[CAReportSourceController class] cell:PSLinkCell edit:nil];
-        [source setProperty:r[@"path"] ?: @"" forKey:@"reportPath"];
-        [rows addObject:source];
+        PSSpecifier *more=[PSSpecifier preferenceSpecifierNamed:@"技术字段" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil]; more.buttonAction=@selector(showMoreDetails:); [rows addObject:more];
+        PSSpecifier *source=[PSSpecifier preferenceSpecifierNamed:@"查看原始日志文件" target:nil set:nil get:nil detail:[CAReportSourceController class] cell:PSLinkCell edit:nil];
+        [source setProperty:r[@"path"] ?: @"" forKey:@"reportPath"]; [rows addObject:source];
+        PSSpecifier *copyPath=[PSSpecifier preferenceSpecifierNamed:@"复制原始日志路径" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil]; copyPath.buttonAction=@selector(copyReportPath:); [rows addObject:copyPath];
         for (PSSpecifier *row in rows) if (row.cellType==PSStaticTextCell) [row setProperty:[CAWrappingTextCell class] forKey:@"cellClass"];
         _specifiers=[rows mutableCopy];
     }

@@ -1,6 +1,10 @@
 # CrashAnalyzer
 
-## 1.2.0 · Build 14
+## 1.3.0 · Build 15
+
+- Reorganized Settings around recent logs, local explanations, prominent AI configuration/history, learning/cases, and one advanced-tools entry. Crash details lead with plain-language evidence and a prominent AI action; source, technical details, and workbench remain available. Existing preflight, explicit cost confirmation, cancellation, history, privacy controls, case matching, and source viewing are retained.
+- UI-only change: evidence remains real-data-only; possible causes remain unconfirmed. Existing async navigation/scan and scan engine are unchanged.
+
 
 - Plugin evidence separates actual fault-thread references, auxiliary other-thread references, loaded-only images (no attribution evidence), and malformed/missing evidence. Counts are distinct incident reports, never a caused-crash count.
 - Plugin details retain actual process/exception/thread/frame/symbol evidence and original report/source links. No fields are synthesized.
@@ -18,10 +22,10 @@ RootHide-compatible iOS 15–17 analytics log viewer for Settings.
 
 ## Features
 
-- Automatically scans Apple analytics `.ips` logs.
+- Automatically scans Apple analytics `.ips` logs; recent reports and categories lead the simplified Settings flow.
 - Classifies crash, memory/Jetsam, restart/panic, resource/watchdog, and unknown reports.
-- Shows process, timestamp, exception, faulting thread, injected images, and local diagnosis.
-- Keeps AI analysis optional; no log is uploaded by the local parser.
+- Crash details lead with a plain-language local explanation, evidence, confidence boundaries, next steps, and a prominent per-log AI action. Advanced evidence, source view, workbench, and scan diagnostics remain available.
+- AI configuration/history and local learning/cases remain available. Network analysis requires explicit user confirmation; local parsing does not upload logs.
 
 ## Build locally
 
@@ -69,4 +73,4 @@ The package installs the PreferenceLoader entry and the Settings preference bund
 
 ## Privacy
 
-AI integration is intentionally not enabled in this first implementation. Any future network analysis must be explicitly opted in and redact device identifiers first.
+Local parsing never sends data. Optional AI requests are available only through explicit preflight and user confirmation. The privacy setting controls whether full `.ips` source is included; otherwise the request uses structured report information. Review the preflight payload and model/provider terms before sending.
