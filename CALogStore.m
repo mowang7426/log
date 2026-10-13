@@ -1,5 +1,7 @@
 #import "CALogStore.h"
 #import "CACaseStore.h"
+#import "CALogExperience.h"
+#import <sys/stat.h>
 #import <CommonCrypto/CommonDigest.h>
 
 // Canonical, length-delimited strings avoid dictionary-order and separator collisions.
@@ -86,13 +88,14 @@ static NSString * const CAUnknown = @"其他";
 - (NSArray<NSString *> *)ipsPaths {
     NSMutableArray *paths=[NSMutableArray array];
     NSFileManager *fm=[NSFileManager defaultManager];
-    NSString *root=@"/var/mobile/Library/Logs/CrashReporter";
+    NSString *root=[[self roots] firstObject];
     NSDirectoryEnumerator *enumerator=[fm enumeratorAtPath:root];
     NSString *relative=nil;
     while ((relative=[enumerator nextObject])) {
         NSString *lower=relative.lowercaseString;
         if ([lower hasSuffix:@".ips"] || [lower hasSuffix:@".ips.synced"]) {
-            [paths addObject:[root stringByAppendingPathComponent:relative]];
+            NSString *path=[root stringByAppendingPathComponent:relative];
+            struct stat st; if (lstat(path.fileSystemRepresentation,&st)==0 && S_ISREG(st.st_mode)) [paths addObject:path];
         }
     }
     return paths;
@@ -155,8 +158,9 @@ static NSString * const CAUnknown = @"其他";
     [_fileEntries release]; [_reportsSnapshot release]; [_diagnosticsSnapshot release]; [_analysisLock release]; [super dealloc];
 }
 - (NSArray *)_deletableReportPaths { NSMutableArray *a=[NSMutableArray array]; for(NSString *p in [self ipsPaths]) [a addObject:p]; return a; }
-- (NSUInteger)countReportsAtPaths:(NSArray *)paths { NSSet *v=[NSSet setWithArray:[self _deletableReportPaths]]; NSUInteger n=0; for(id p in paths) if([p isKindOfClass:NSString.class]&&[v containsObject:p])n++; return n; }
-- (NSUInteger)deleteReportsAtPaths:(NSArray *)paths { NSSet *v=[NSSet setWithArray:[self _deletableReportPaths]]; NSUInteger n=0; for(id p in paths) if([p isKindOfClass:NSString.class]&&[v containsObject:p]&&[NSFileManager.defaultManager removeItemAtPath:p error:NULL])n++; if(n)[self refreshReports]; return n; }
+- (NSUInteger)countReportsAtPaths:(NSArray *)paths { NSSet *v=[NSSet setWithArray:[self _deletableReportPaths]]; NSUInteger n=0; for(id p in [NSSet setWithArray:paths]) if([p isKindOfClass:NSString.class]&&[v containsObject:p])n++; return n; }
+- (NSUInteger)deleteReportsAtPaths:(NSArray *)paths { NSSet *v=[NSSet setWithArray:[self _deletableReportPaths]]; NSUInteger n=0; for(id p in [NSSet setWithArray:paths]) if([p isKindOfClass:NSString.class]&&[v containsObject:p]&&[NSFileManager.defaultManager removeItemAtPath:p error:NULL])n++; if(n)[self refreshReports]; return n; }
+- (NSArray *)deletableReportPaths { return [self _deletableReportPaths]; }
 - (NSUInteger)deleteAllReports { return [self deleteReportsAtPaths:[self _deletableReportPaths]]; }
 - (NSDictionary *)storageUsage { unsigned long long raw=0,cache=0; NSUInteger count=0; NSFileManager *fm=NSFileManager.defaultManager; for(NSString *p in [self _deletableReportPaths]){NSDictionary *a=[fm attributesOfItemAtPath:p error:NULL];if(a){raw+=[a[NSFileSize] unsignedLongLongValue];count++;}} NSString *dir=[self analysisCacheDirectory]; for(NSString *r in [fm enumeratorAtPath:dir]){NSDictionary *a=[fm attributesOfItemAtPath:[dir stringByAppendingPathComponent:r] error:NULL];cache+=[a[NSFileSize] unsignedLongLongValue];} return @{@"rawLogBytes":@(raw),@"rawLogCount":@(count),@"analysisCacheBytes":@(cache),@"totalBytes":@(raw+cache),@"rawLogsStatus":@"真实统计",@"analysisCacheStatus":@"真实统计"};
 }
@@ -207,7 +211,7 @@ static NSString * const CAUnknown = @"其他";
             NSDictionary *cached=_fileEntries[path];
             if (cached && [cached[@"stamp"] isEqual:stamp]) {
                 NSDictionary *r=cached[@"report"];[out addObject:r];nextEntries[path]=cached;reused++;readable++;
-                if (![r[@"parseError"] boolValue]) parsed++;
+                if (![r[@"parseError"] boolValue] && ![r[@"parsePartial"] boolValue]) parsed++;
                 continue;
             }
             changed++;
@@ -215,11 +219,13 @@ static NSString * const CAUnknown = @"其他";
             if (!data) { [lastError release]; lastError=[error retain]; continue; }
             readable++;
             NSDictionary *d=[self parse:data];
-            if (d) parsed++;
+            if (d && ![d[@"parsePartial"] boolValue]) parsed++;
             NSMutableDictionary *r=d ? [[[self normalizedReport:d] mutableCopy] autorelease] : [NSMutableDictionary dictionary];
             if (!d) { r[@"bug_type"]=@"unknown"; r[@"parseError"]=@YES; }
             r[@"path"]=path;
             r[@"fileName"]=path.lastPathComponent;
+            r[@"sortDate"]=CAReportDate(r,attrs[NSFileModificationDate]);
+            r[@"dateSource"]=[CAReportDate(r,nil) isEqualToDate:[NSDate distantPast]] ? @"文件修改时间回退" : @"日志时间";
             r[@"category"]=[self categoryForReport:r];
             r[@"diagnosis"]=[self diagnosisForReport:r];
             // Do not cache a file that changed while it was being read.
@@ -237,27 +243,42 @@ static NSString * const CAUnknown = @"其他";
         @"error":lastError.localizedDescription ?: @""};
     [lastError release];
     [out sortUsingComparator:^NSComparisonResult(NSDictionary *a, NSDictionary *b) {
-        NSString *ta=[a[@"timestamp"] description] ?: @"";
-        NSString *tb=[b[@"timestamp"] description] ?: @"";
-        return [tb compare:ta];
+        NSDate *ta=a[@"sortDate"] ?: [NSDate distantPast];
+        NSDate *tb=b[@"sortDate"] ?: [NSDate distantPast];
+        NSComparisonResult order=[tb compare:ta];
+        return order==NSOrderedSame ? [a[@"path"] compare:b[@"path"]] : order;
     }];
     return out;
 }
 - (NSDictionary *)parse:(NSData *)data {
-    NSString *s=[[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] autorelease];
-    if (!s) return nil;
-    NSArray *lines=[s componentsSeparatedByString:@"\n"];
-    if (!lines.count) return nil;
-    NSMutableDictionary *result=[NSMutableDictionary dictionary];
-    NSDictionary *header=[NSJSONSerialization JSONObjectWithData:[lines[0] dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
-    if ([header isKindOfClass:[NSDictionary class]]) [result addEntriesFromDictionary:header];
-    if (lines.count>1) {
-        NSMutableString *bodyText=[NSMutableString string];
-        for (NSUInteger i=1; i<lines.count; i++) [bodyText appendString:lines[i]];
-        NSDictionary *body=[NSJSONSerialization JSONObjectWithData:[bodyText dataUsingEncoding:NSUTF8StringEncoding] options:0 error:nil];
-        if ([body isKindOfClass:[NSDictionary class]]) [result addEntriesFromDictionary:body];
+    NSString *text=[[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] autorelease];
+    if (!text) return nil;
+    text=[text stringByTrimmingCharactersInSet:[NSCharacterSet whitespaceAndNewlineCharacterSet]];
+    if ([text hasPrefix:@"\uFEFF"]) text=[text substringFromIndex:1];
+    id whole=[NSJSONSerialization JSONObjectWithData:[text dataUsingEncoding:NSUTF8StringEncoding] options:0 error:NULL];
+    if ([whole isKindOfClass:NSDictionary.class]) {
+        NSMutableDictionary *r=[[whole mutableCopy] autorelease]; r[@"parseStatus"]=@"完整单 JSON"; return r;
     }
-    return result.count ? result : nil;
+    // Split at a balanced top-level object, respecting quoted braces and escapes.
+    NSInteger depth=0; BOOL quoted=NO, escaped=NO; NSUInteger end=NSNotFound;
+    for (NSUInteger i=0;i<text.length;i++) {
+        unichar c=[text characterAtIndex:i];
+        if (quoted) { if (escaped) escaped=NO; else if(c=='\\') escaped=YES; else if(c=='"') quoted=NO; continue; }
+        if(c=='"') quoted=YES; else if(c=='{') depth++; else if(c=='}') { depth--; if(depth==0){end=i+1;break;} }
+    }
+    if (end==NSNotFound) return nil;
+    id header=[NSJSONSerialization JSONObjectWithData:[[text substringToIndex:end] dataUsingEncoding:NSUTF8StringEncoding] options:0 error:NULL];
+    if (![header isKindOfClass:NSDictionary.class]) return nil;
+    NSString *tail=[[text substringFromIndex:end] stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    NSError *error=nil;
+    id body=[NSJSONSerialization JSONObjectWithData:[tail dataUsingEncoding:NSUTF8StringEncoding] options:0 error:&error];
+    NSMutableDictionary *r=[[header mutableCopy] autorelease];
+    BOOL complete=[body isKindOfClass:NSDictionary.class];
+    if (complete) [r addEntriesFromDictionary:body];
+    r[@"headerParsed"]=@YES; r[@"bodyParsed"]=@(complete); r[@"parsePartial"]=@(!complete);
+    r[@"parseStatus"]=complete ? @"完整双段 JSON" : @"仅头部成功，正文缺失或损坏";
+    if (!complete) r[@"parseDetail"]=error.localizedDescription ?: @"正文不是 JSON 对象";
+    return r;
 }
 - (NSDictionary *)scanDiagnostics {
     @synchronized(self) {
@@ -269,20 +290,13 @@ static NSString * const CAUnknown = @"其他";
     id bugValue=r[@"bug_type"];
     NSString *bug=[bugValue isKindOfClass:[NSString class]] ? bugValue : [bugValue description];
     NSDictionary *exception=[r[@"exception"] isKindOfClass:[NSDictionary class]] ? r[@"exception"] : nil;
-    NSString *blob=[[r description] lowercaseString];
-
-    /* Prefer stable IPS fields. Do not search the entire report description:
-       stack strings can contain unrelated words such as "resource" or "cpu". */
-    if ([bug isEqualToString:@"309"] || exception != nil || r[@"exceptionType"] || r[@"faultingThread"])
-        return @"崩溃";
-    if ([bug isEqualToString:@"298"] || [blob containsString:@"jetsam event"] || r[@"largestProcess"])
-        return @"内存";
-    if ([bug isEqualToString:@"210"] || r[@"panicString"] || [blob containsString:@"panic-full"])
-        return @"重启";
-    if (r[@"watchdogTimeout"] || [blob containsString:@"watchdog timeout"] || [blob containsString:@"resource_exception"])
-        return @"资源";
-    if ([r[@"procName"] isKindOfClass:[NSString class]] || [r[@"app_name"] isKindOfClass:[NSString class]])
-        return @"崩溃";
+    NSDictionary *term=[r[@"termination"] isKindOfClass:NSDictionary.class] ? r[@"termination"] : @{};
+    NSString *type=CAStableString(exception[@"type"] ?: r[@"exceptionType"]);
+    NSString *ns=CAStableString(term[@"namespace"]).uppercaseString;
+    if ([bug isEqualToString:@"298"]) return @"内存";
+    if ([bug isEqualToString:@"210"] || CAStableString(r[@"panicString"]).length) return @"重启";
+    if ([type isEqual:@"EXC_RESOURCE"] || (r[@"watchdogTimeout"] && r[@"watchdogTimeout"]!=NSNull.null) || [ns containsString:@"WATCHDOG"] || [CAStableString(term[@"code"]) isEqualToString:@"2343432205"]) return @"资源";
+    if ([bug isEqualToString:@"309"] || type.length || r[@"faultingThread"]) return @"崩溃";
     return CAUnknown;
 }
 - (NSString *)fingerprintForReport:(NSDictionary *)report {

@@ -41,5 +41,6 @@ FOUNDATION_EXPORT NSString * const CALogStoreDidRefreshNotification;
 - (NSDictionary *)storageUsage;
 - (NSUInteger)countReportsAtPaths:(NSArray *)paths;
 - (NSUInteger)deleteReportsAtPaths:(NSArray *)paths;
+- (NSArray<NSString *> *)deletableReportPaths;
 - (NSUInteger)deleteAllReports;
 @end
