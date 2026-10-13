@@ -1,8 +1,7 @@
 #import <Preferences/PSListController.h>
 #import <UIKit/UIKit.h>
 @class PSSpecifier;
-@interface CAReportViewController : PSListController <UISearchResultsUpdating>
-@property(nonatomic, retain) PSSpecifier *specifier;
+@interface CAReportViewController : PSListController
 - (instancetype)initWithSpecifier:(PSSpecifier *)specifier;
 - (NSString *)reportCategory;
 @end

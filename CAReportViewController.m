@@ -3,7 +3,6 @@
 #import "CAAI.h"
 #import "CAWorkbenchController.h"
 #import "CALogStore.h"
-#import "CALogExperience.h"
 #import "CAEvidenceUI.h"
 #import <Preferences/PSSpecifier.h>
 #import <Preferences/PSTableCell.h>
@@ -29,6 +28,52 @@ static PSSpecifier *CAShortRow(NSString *text) {
     return row;
 }
 
+@implementation CAReportViewController
+
+// Resolve category when rendering, regardless of how Preferences constructs us.
+- (NSString *)reportCategory { return nil; }
+
+- (instancetype)initWithSpecifier:(PSSpecifier *)specifier {
+    self=[super init];
+    if (self) self.specifier=specifier;
+    return self;
+}
+
+- (id)specifiers {
+    if (!_specifiers) {
+        NSMutableArray *rows=[NSMutableArray array];
+        NSString *category=[self reportCategory];
+        NSArray *reports=category.length ? [[CALogStore sharedStore] reportsForCategory:category] : [[CALogStore sharedStore] reports];
+        self.title=category ?: @"最近日志";
+        {
+            PSSpecifier *head=[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"%@ · %lu 条",self.title,(unsigned long)reports.count] target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
+            [head setProperty:@"点击一条日志查看详细分析" forKey:@"footerText"];
+            [rows addObject:head];
+            for (NSDictionary *r in reports) {
+                NSString *name=r[@"fileName"] ?: r[@"procName"] ?: r[@"app_name"] ?: @"未知日志";
+                PSSpecifier *item=[PSSpecifier preferenceSpecifierNamed:name target:nil set:nil get:nil detail:[CAReportDetailController class] cell:PSLinkCell edit:nil];
+                CAWrapEvidenceRow(item);
+                [item setName:[NSString stringWithFormat:@"%@\n%@",name,r[@"timestamp"] ?: @"时间未知"]];
+                [item setProperty:r forKey:@"reportSnapshot"];
+                [item setProperty:r[@"path"] ?: @"" forKey:@"reportPath"];
+                [item setProperty:r[@"category"] ?: @"其他" forKey:@"reportCategory"];
+                [item setProperty:[NSString stringWithFormat:@"%@ · %@",r[@"timestamp"] ?: @"时间未知",r[@"diagnosis"] ?: @"暂无摘要"] forKey:@"footerText"];
+                [rows addObject:item];
+            }
+            NSDictionary *scan=CALogStore.sharedStore.scanDiagnostics;
+            if (CALogStore.sharedStore.reportsReady && (![scan[@"exists"] boolValue] || [scan[@"error"] length])) [rows addObject:CAShortRow([NSString stringWithFormat:@"扫描错误：%@",[scan[@"error"] length]?scan[@"error"]:@"日志目录不存在或不可访问"])];
+            if (!reports.count) [rows addObject:[PSSpecifier preferenceSpecifierNamed:CALogStore.sharedStore.scanInProgress?@"正在后台扫描…":@"扫描完成：没有匹配的日志" target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
+        }
+        _specifiers=[rows mutableCopy];
+    }
+    return _specifiers;
+}
+- (CGFloat)tableView:(UITableView *)t heightForRowAtIndexPath:(NSIndexPath *)i {PSSpecifier *s=[self specifierAtIndexPath:i];return [s propertyForKey:@"cellClass"]==[CAEvidenceWrappingCell class]?CAEvidenceRowHeight(t,s):[super tableView:t heightForRowAtIndexPath:i];}
+- (void)viewDidLoad { [super viewDidLoad]; self.title=[self reportCategory] ?: @"分类未绑定"; [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(scanUpdated:) name:CALogStoreDidRefreshNotification object:CALogStore.sharedStore]; }
+- (void)viewWillAppear:(BOOL)a {[super viewWillAppear:a];[CALogStore.sharedStore refreshReports];}
+- (void)scanUpdated:(NSNotification *)n {(void)n;[_specifiers release];_specifiers=nil;if(self.viewIfLoaded.window)[self reloadSpecifiers];}
+- (void)dealloc {[[NSNotificationCenter defaultCenter] removeObserver:self];[super dealloc];}
+@end
 @implementation CARecentReportsViewController
 - (NSString *)reportCategory { return nil; }
 @end
@@ -118,8 +163,6 @@ static PSSpecifier *CAShortRow(NSString *text) {
         PSSpecifier *ai=[PSSpecifier preferenceSpecifierNamed:@"AI 分析此日志" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
         [ai setProperty:@"先检查发送内容与费用，再由你确认是否请求；取消和历史结果仍可在工作台查看。" forKey:@"footerText"];
         ai.buttonAction=@selector(analyzeWithAI:); [rows addObject:ai];
-        [rows addObject:CAShortRow([NSString stringWithFormat:@"解析状态：%@%@",r[@"parseStatus"] ?: @"未知",[r[@"parsePartial"] boolValue] ? @"；仅头部证据，正文不完整，以下说明不能视为完整分析。" : @""])];
-        for (NSString *e in CASpecialEvidence(r)) [rows addObject:CAShortRow(e)];
         PSSpecifier *version=[PSSpecifier preferenceSpecifierNamed:@"本地快速说明" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
         [version setProperty:@"依据本机日志字段整理；可能原因不是已确认根因。AI 分析需另行确认。" forKey:@"footerText"]; [rows addObject:version];
         // 首屏只保留可执行的结论；原始字段、路径和完整 AI 原文放到下方入口。
@@ -222,4 +265,54 @@ static PSSpecifier *CAShortRow(NSString *text) {
     [self.navigationController pushViewController:v animated:YES]; [v release];
 }
 - (void)viewDidLoad { [super viewDidLoad]; self.title=_report[@"procName"] ?: _report[@"app_name"] ?: @"日志详情"; }
+@end
+
+@implementation CAReportSourceController
+- (instancetype)initWithSpecifier:(PSSpecifier *)specifier {
+    self=[super init];
+    if (self) self.specifier=specifier;
+    return self;
+}
+- (id)specifiers {
+    if (!_specifiers) {
+        NSString *path=[self.specifier propertyForKey:@"reportPath"];
+        NSData *data=[NSData dataWithContentsOfFile:path options:0 error:nil];
+        NSString *text=data ? [[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] autorelease] : @"无法读取源文件。";
+        NSMutableArray *rows=[NSMutableArray array];
+        PSSpecifier *copy=[PSSpecifier preferenceSpecifierNamed:@"复制源文件" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
+        copy.buttonAction=@selector(copySource:);
+        [rows addObject:copy];
+        PSSpecifier *share=[PSSpecifier preferenceSpecifierNamed:@"分享源文件" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
+        share.buttonAction=@selector(shareSource:);
+        [rows addObject:share];
+        NSArray *lines=[text componentsSeparatedByString:@"\n"];
+        for (NSString *lineText in lines) {
+            if (!lineText.length) { [rows addObject:[PSSpecifier preferenceSpecifierNamed:@" " target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]]; continue; }
+            for (NSUInteger i=0; i<lineText.length; i+=96) {
+                NSUInteger n=MIN((NSUInteger)96,lineText.length-i);
+                NSString *part=[lineText substringWithRange:NSMakeRange(i,n)];
+                [rows addObject:[PSSpecifier preferenceSpecifierNamed:part target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
+            }
+        }
+        _specifiers=[rows mutableCopy];
+        self.title=path.lastPathComponent ?: @"源文件";
+    }
+    return _specifiers;
+}
+- (void)copySource:(PSSpecifier *)specifier {
+    (void)specifier;
+    NSString *path=[self.specifier propertyForKey:@"reportPath"];
+    NSData *data=[NSData dataWithContentsOfFile:path options:0 error:nil];
+    [UIPasteboard generalPasteboard].string=data ? [[[NSString alloc] initWithData:data encoding:NSUTF8StringEncoding] autorelease] : @"";
+}
+- (void)shareSource:(PSSpecifier *)specifier {
+    (void)specifier;
+    NSString *path=[self.specifier propertyForKey:@"reportPath"];
+    if (!path.length) return;
+    NSString *dst=[NSTemporaryDirectory() stringByAppendingPathComponent:path.lastPathComponent ?: @"report.ips"];
+    [[NSFileManager defaultManager] removeItemAtPath:dst error:nil];
+    if (![[NSFileManager defaultManager] copyItemAtPath:path toPath:dst error:nil]) return;
+    UIActivityViewController *vc=[[[UIActivityViewController alloc] initWithActivityItems:@[[NSURL fileURLWithPath:dst]] applicationActivities:nil] autorelease];
+    [self presentViewController:vc animated:YES completion:nil];
+}
 @end
