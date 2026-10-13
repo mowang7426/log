@@ -25,6 +25,7 @@
 static PSSpecifier *CACardRow(NSString *title,NSString *subtitle,NSString *tone){PSSpecifier *s=[PSSpecifier preferenceSpecifierNamed:title?:@"" target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil];[s setProperty:[CACrashCardCell class] forKey:@"cellClass"];if(subtitle.length)[s setProperty:subtitle forKey:@"cardSubtitle"];if(tone.length)[s setProperty:tone forKey:@"cardTone"];return s;}
 static NSString *CAValue(id v,NSString *fallback){if([v isKindOfClass:[NSString class]]&&[v length])return v;if([v isKindOfClass:[NSNumber class]])return [v stringValue];return fallback?:@"未知";}
 
+@interface CAWrappingTextCell : PSTableCell @end
 @implementation CAWrappingTextCell
 - (void)layoutSubviews { [super layoutSubviews]; UILabel *label=self.titleLabel ?: self.textLabel; label.font=[UIFont preferredFontForTextStyle:UIFontTextStyleBody]; label.adjustsFontForContentSizeCategory=YES; label.textColor=[UIColor labelColor]; label.numberOfLines=0; label.lineBreakMode=NSLineBreakByCharWrapping; label.frame=CGRectMake(16,10,MAX(1,self.contentView.bounds.size.width-32),MAX(1,self.contentView.bounds.size.height-20)); }
 @end
@@ -136,15 +137,16 @@ static PSSpecifier *CAShortRow(NSString *text) { PSSpecifier *row=[PSSpecifier p
         self.title=_report[@"procName"] ?: _report[@"app_name"] ?: @"日志详情";
         NSMutableArray *rows=[NSMutableArray array];
         NSDictionary *r=_report;
+        NSDictionary *match=_match;
         NSDictionary *human=_human;
         NSDictionary *ex=[r[@"exception"] isKindOfClass:[NSDictionary class]]?r[@"exception"]:@{};
         NSString *process=CAValue(r[@"procName"]?:r[@"app_name"],@"未知进程");
         NSString *bundle=CAValue(r[@"normalizedBundleID"]?:r[@"bundle_id"],@"Bundle ID 未记录");
         NSString *pid=CAValue(r[@"normalizedPID"]?:r[@"pid"],@"PID 未记录");
-        NSString *version=CAValue(r[@"app_version"]?:r[@"version"],@"版本未知");
+        NSString *appVersion=CAValue(r[@"app_version"]?:r[@"version"],@"版本未知");
         NSString *when=CAValue(r[@"timestamp"],@"时间未知");
         [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"崩溃详情" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
-        [rows addObject:CACardRow(process,[NSString stringWithFormat:@"%@\nPID %@ · %@ · %@",bundle,pid,version,when],nil)];
+        [rows addObject:CACardRow(process,[NSString stringWithFormat:@"%@\nPID %@ · %@ · %@",bundle,pid,appVersion,when],nil)];
         NSString *signal=CAValue(ex[@"signal"]?:r[@"normalizedSignal"],CAValue(r[@"normalizedExceptionType"],@"异常未知"));
         NSString *address=CAValue(ex[@"address"],@"地址未知");
         NSString *codes=CAValue(ex[@"codes"]?:r[@"normalizedCodes"],@"代码未知");
