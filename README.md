@@ -13,7 +13,12 @@
 - 原文查看上限不是索引扫描的内存上限：扫描仍解析完整日志，大文件性能需真机测量。删除固定路径而非 inode；同一路径被替换仍存在竞争窗口。不保证权限不可达日志可读。
 - CI/Foundation 回归与 UIKit 包构建不是实际设备安装/视觉/性能验证。未安装插件，未删除用户日志。
 
-## 1.3.1 · Build 16
+## UI CHANGELOG · 1.4.0-card
+
+- 崩溃详情仍由 `CAReportDetailController : PSListController` 提供；新增 Preferences 原生 `PSTableCell` 卡片，避免把普通 `UITableViewController` 作为 detail。
+- 首屏卡片展示真实进程/Bundle ID/PID/版本/时间、异常信号/地址/代码、触发线程和函数；动态库按故障帧实际引用、其他线程引用、仅加载未归因分层，不把出现等同根因。
+- 卡片使用系统语义颜色、圆角、Dynamic Type 和自适应行高；AI、case、workbench、原文、复制及 Jetsam/Panic/watchdog 专项入口保持不变。CI 仅做编译/回归，视觉和性能仍需真机验证。
+
 
 - Reorganized Settings around recent logs, local explanations, prominent AI configuration/history, learning/cases, and one advanced-tools entry. Crash details lead with plain-language evidence and a prominent AI action; source, technical details, and workbench remain available. Existing preflight, explicit cost confirmation, cancellation, history, privacy controls, case matching, and source viewing are retained.
 - UI-only change: evidence remains real-data-only; possible causes remain unconfirmed. Existing async navigation/scan and scan engine are unchanged.

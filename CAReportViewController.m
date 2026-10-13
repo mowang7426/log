@@ -5,10 +5,26 @@
 #import "CALogStore.h"
 #import "CALogExperience.h"
 #import "CAEvidenceUI.h"
+#import "CAPluginEvidence.h"
 #import <Preferences/PSSpecifier.h>
 #import <Preferences/PSTableCell.h>
 
-@interface CAWrappingTextCell : PSTableCell @end
+// Preferences-native visual card; detail remains a PSListController/specifier.
+@interface CACrashCardCell : PSTableCell @end
+@implementation CACrashCardCell
+- (void)layoutSubviews {
+    [super layoutSubviews]; UIView *card=self.contentView;
+    card.layer.cornerRadius=12.0; card.layer.masksToBounds=YES; card.backgroundColor=[UIColor secondarySystemBackgroundColor];
+    UILabel *title=self.titleLabel ?: self.textLabel; title.numberOfLines=0; title.lineBreakMode=NSLineBreakByCharWrapping; title.font=[UIFont preferredFontForTextStyle:UIFontTextStyleBody]; title.adjustsFontForContentSizeCategory=YES; title.textColor=[UIColor labelColor];
+    UILabel *detail=(UILabel *)[card viewWithTag:9414]; if(!detail){detail=[[[UILabel alloc] initWithFrame:CGRectZero] autorelease];detail.tag=9414;[card addSubview:detail];}
+    detail.text=[self.specifier propertyForKey:@"cardSubtitle"] ?: @""; detail.numberOfLines=0; detail.lineBreakMode=NSLineBreakByCharWrapping; detail.font=[UIFont preferredFontForTextStyle:UIFontTextStyleFootnote]; detail.adjustsFontForContentSizeCategory=YES; detail.textColor=[UIColor secondaryLabelColor];
+    CGFloat w=MAX(1.0,card.bounds.size.width-32.0), y=10.0; title.frame=CGRectMake(16,y,w,MAX(24.0,title.intrinsicContentSize.height)); y=CGRectGetMaxY(title.frame)+2.0; detail.frame=CGRectMake(16,y,w,MAX(18.0,detail.intrinsicContentSize.height));
+    NSString *tone=[self.specifier propertyForKey:@"cardTone"]; if([tone isEqual:@"danger"]) title.textColor=[UIColor systemRedColor]; else if([tone isEqual:@"success"]) title.textColor=[UIColor systemGreenColor];
+}
+@end
+static PSSpecifier *CACardRow(NSString *title,NSString *subtitle,NSString *tone){PSSpecifier *s=[PSSpecifier preferenceSpecifierNamed:title?:@"" target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil];[s setProperty:[CACrashCardCell class] forKey:@"cellClass"];if(subtitle.length)[s setProperty:subtitle forKey:@"cardSubtitle"];if(tone.length)[s setProperty:tone forKey:@"cardTone"];return s;}
+static NSString *CAValue(id v,NSString *fallback){if([v isKindOfClass:[NSString class]]&&[v length])return v;if([v isKindOfClass:[NSNumber class]])return [v stringValue];return fallback?:@"未知";}
+
 @implementation CAWrappingTextCell
 - (void)layoutSubviews { [super layoutSubviews]; UILabel *label=self.titleLabel ?: self.textLabel; label.font=[UIFont preferredFontForTextStyle:UIFontTextStyleBody]; label.adjustsFontForContentSizeCategory=YES; label.textColor=[UIColor labelColor]; label.numberOfLines=0; label.lineBreakMode=NSLineBreakByCharWrapping; label.frame=CGRectMake(16,10,MAX(1,self.contentView.bounds.size.width-32),MAX(1,self.contentView.bounds.size.height-20)); }
 @end
@@ -120,9 +136,30 @@ static PSSpecifier *CAShortRow(NSString *text) { PSSpecifier *row=[PSSpecifier p
         self.title=_report[@"procName"] ?: _report[@"app_name"] ?: @"日志详情";
         NSMutableArray *rows=[NSMutableArray array];
         NSDictionary *r=_report;
-        NSDictionary *match=_match;
-        NSString *matchStatus=_matchStatus;
         NSDictionary *human=_human;
+        NSDictionary *ex=[r[@"exception"] isKindOfClass:[NSDictionary class]]?r[@"exception"]:@{};
+        NSString *process=CAValue(r[@"procName"]?:r[@"app_name"],@"未知进程");
+        NSString *bundle=CAValue(r[@"normalizedBundleID"]?:r[@"bundle_id"],@"Bundle ID 未记录");
+        NSString *pid=CAValue(r[@"normalizedPID"]?:r[@"pid"],@"PID 未记录");
+        NSString *version=CAValue(r[@"app_version"]?:r[@"version"],@"版本未知");
+        NSString *when=CAValue(r[@"timestamp"],@"时间未知");
+        [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"崩溃详情" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
+        [rows addObject:CACardRow(process,[NSString stringWithFormat:@"%@\nPID %@ · %@ · %@",bundle,pid,version,when],nil)];
+        NSString *signal=CAValue(ex[@"signal"]?:r[@"normalizedSignal"],CAValue(r[@"normalizedExceptionType"],@"异常未知"));
+        NSString *address=CAValue(ex[@"address"],@"地址未知");
+        NSString *codes=CAValue(ex[@"codes"]?:r[@"normalizedCodes"],@"代码未知");
+        NSString *faultThread=CAValue(r[@"normalizedFaultingThread"]?:r[@"faultingThread"],@"未知");
+        NSString *function=CAValue(r[@"faultingFunction"]?:r[@"exceptionFunction"]?:ex[@"function"],@"函数未解析");
+        [rows addObject:CACardRow([NSString stringWithFormat:@"%@ · %@",signal,CAValue(r[@"category"],@"崩溃")],[NSString stringWithFormat:@"地址 %@ · 代码 %@\n触发线程 #%@ · %@",address,codes,faultThread,function],@"danger")];
+        [rows addObject:CACardRow(human[@"title"]?:@"摘要暂不可用",human[@"reason"]?:@"暂无可读结论",nil)];
+        [rows addObject:[PSSpecifier preferenceSpecifierNamed:@"证据与线程" target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]];
+        NSArray *threads=[r[@"threads"] isKindOfClass:[NSArray class]]?r[@"threads"]:@[];
+        [rows addObject:CACardRow([NSString stringWithFormat:@"线程与堆栈 · %lu 个线程",(unsigned long)threads.count],[NSString stringWithFormat:@"故障线程 #%@；完整帧和模块归因请打开工作台。",faultThread],nil)];
+        NSArray *plugin=[CAPluginEvidence summaryForReports:@[r] limit:8];
+        if(plugin.count){ NSMutableArray *labels=[NSMutableArray array]; for(NSDictionary *item in plugin){NSString *tier=[CAPluginEvidence tierLabel:item[@"tier"]];[labels addObject:[NSString stringWithFormat:@"%@ · %@",CAValue(item[@"name"],@"动态库"),tier]];} [rows addObject:CACardRow(@"注入 / 动态库",[labels componentsJoinedByString:@"\n"],nil)]; }
+        [rows addObject:CACardRow(@"证据边界",@"故障帧实际引用、其他线程引用、仅加载未归因分开显示；出现不等于根因。",nil)];
+
+        NSString *matchStatus=_matchStatus;
         PSSpecifier *ai=[PSSpecifier preferenceSpecifierNamed:@"AI 分析此日志" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil];
         [ai setProperty:@"先检查发送内容与费用，再由你确认是否请求；取消和历史结果仍可在工作台查看。" forKey:@"footerText"];
         ai.buttonAction=@selector(analyzeWithAI:); [rows addObject:ai];
@@ -160,13 +197,19 @@ static PSSpecifier *CAShortRow(NSString *text) { PSSpecifier *row=[PSSpecifier p
         [source setProperty:r[@"path"] ?: @"" forKey:@"reportPath"]; [rows addObject:source];
         PSSpecifier *copyPath=[PSSpecifier preferenceSpecifierNamed:@"复制原始日志路径" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil]; copyPath.buttonAction=@selector(copyReportPath:); [rows addObject:copyPath];
         PSSpecifier *more=[PSSpecifier preferenceSpecifierNamed:@"查看技术字段、ID 与原始异常" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil]; more.buttonAction=@selector(showMoreDetails:); [rows addObject:more];
-        for (PSSpecifier *row in rows) if (row.cellType==PSStaticTextCell) [row setProperty:[CAWrappingTextCell class] forKey:@"cellClass"];
+        for (PSSpecifier *row in rows) if (row.cellType==PSStaticTextCell && ![row propertyForKey:@"cellClass"]) [row setProperty:[CAWrappingTextCell class] forKey:@"cellClass"];
         _specifiers=[rows mutableCopy];
     }
     return _specifiers;
 }
 - (CGFloat)tableView:(UITableView *)tableView heightForRowAtIndexPath:(NSIndexPath *)indexPath {
     PSSpecifier *s=[self specifierAtIndexPath:indexPath];
+    if ([s propertyForKey:@"cellClass"] == [CACrashCardCell class]) {
+        NSString *sub=[s propertyForKey:@"cardSubtitle"] ?: @"";
+        CGFloat width=MAX(1.0,tableView.bounds.size.width-48.0);
+        CGRect box=[sub boundingRectWithSize:CGSizeMake(width,CGFLOAT_MAX) options:NSStringDrawingUsesLineFragmentOrigin|NSStringDrawingUsesFontLeading attributes:@{NSFontAttributeName:[UIFont preferredFontForTextStyle:UIFontTextStyleFootnote]} context:nil];
+        return MAX(82.0,ceil(box.size.height)+66.0);
+    }
     if ([s propertyForKey:@"cellClass"] != [CAWrappingTextCell class]) return [super tableView:tableView heightForRowAtIndexPath:indexPath];
     NSString *text=[s name] ?: @"";
     CGFloat width=MAX(1.0,tableView.bounds.size.width-72.0);
