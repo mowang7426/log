@@ -3,76 +3,39 @@
 #import "CAAI.h"
 #import "CAWorkbenchController.h"
 #import "CALogStore.h"
+#import "CALogExperience.h"
 #import "CAEvidenceUI.h"
 #import <Preferences/PSSpecifier.h>
 #import <Preferences/PSTableCell.h>
 
-// Detail text wraps to the available width; never truncate the stored value.
-@interface CAWrappingTextCell : PSTableCell
-@end
+@interface CAWrappingTextCell : PSTableCell @end
 @implementation CAWrappingTextCell
-- (void)layoutSubviews {
-    [super layoutSubviews];
-    UILabel *label=self.titleLabel ?: self.textLabel;
-    label.font=[UIFont preferredFontForTextStyle:UIFontTextStyleBody];
-    label.adjustsFontForContentSizeCategory=YES;
-    label.textColor=[UIColor labelColor];
-    label.numberOfLines=0;
-    label.lineBreakMode=NSLineBreakByCharWrapping;
-    label.frame=CGRectMake(16,10,MAX(1,self.contentView.bounds.size.width-32),MAX(1,self.contentView.bounds.size.height-20));
-}
+- (void)layoutSubviews { [super layoutSubviews]; UILabel *label=self.titleLabel ?: self.textLabel; label.font=[UIFont preferredFontForTextStyle:UIFontTextStyleBody]; label.adjustsFontForContentSizeCategory=YES; label.textColor=[UIColor labelColor]; label.numberOfLines=0; label.lineBreakMode=NSLineBreakByCharWrapping; label.frame=CGRectMake(16,10,MAX(1,self.contentView.bounds.size.width-32),MAX(1,self.contentView.bounds.size.height-20)); }
 @end
-static PSSpecifier *CAShortRow(NSString *text) {
-    PSSpecifier *row=[PSSpecifier preferenceSpecifierNamed:text ?: @"" target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil];
-    [row setProperty:[CAWrappingTextCell class] forKey:@"cellClass"];
-    return row;
-}
+static PSSpecifier *CAShortRow(NSString *text) { PSSpecifier *row=[PSSpecifier preferenceSpecifierNamed:text ?: @"" target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]; [row setProperty:[CAWrappingTextCell class] forKey:@"cellClass"]; return row; }
 
 @implementation CAReportViewController
-
-// Resolve category when rendering, regardless of how Preferences constructs us.
 - (NSString *)reportCategory { return nil; }
-
-- (instancetype)initWithSpecifier:(PSSpecifier *)specifier {
-    self=[super init];
-    if (self) self.specifier=specifier;
-    return self;
+- (instancetype)initWithSpecifier:(PSSpecifier *)specifier { self=[super init]; if(self){self.specifier=specifier; _selectedPaths=[[NSMutableSet alloc] init];} return self; }
+- (NSArray *)visibleReports {
+    NSString *category=[self reportCategory]; NSArray *source=category.length ? [CALogStore.sharedStore reportsForCategory:category] : CALogStore.sharedStore.reports; NSMutableArray *out=[NSMutableArray array];
+    for(NSDictionary *r in source) if(CAReportMatches(r,_logQuery)) [out addObject:r];
+    if(_groupByProcess) [out sortUsingComparator:^NSComparisonResult(NSDictionary *a,NSDictionary *b){ return [CAProcessName(a) localizedCaseInsensitiveCompare:CAProcessName(b)]; }];
+    return out;
 }
-
-- (id)specifiers {
-    if (!_specifiers) {
-        NSMutableArray *rows=[NSMutableArray array];
-        NSString *category=[self reportCategory];
-        NSArray *reports=category.length ? [[CALogStore sharedStore] reportsForCategory:category] : [[CALogStore sharedStore] reports];
-        self.title=category ?: @"最近日志";
-        {
-            PSSpecifier *head=[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"%@ · %lu 条",self.title,(unsigned long)reports.count] target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil];
-            [head setProperty:@"点击一条日志查看详细分析" forKey:@"footerText"];
-            [rows addObject:head];
-            for (NSDictionary *r in reports) {
-                NSString *name=r[@"fileName"] ?: r[@"procName"] ?: r[@"app_name"] ?: @"未知日志";
-                PSSpecifier *item=[PSSpecifier preferenceSpecifierNamed:name target:nil set:nil get:nil detail:[CAReportDetailController class] cell:PSLinkCell edit:nil];
-                CAWrapEvidenceRow(item);
-                [item setName:[NSString stringWithFormat:@"%@\n%@",name,r[@"timestamp"] ?: @"时间未知"]];
-                [item setProperty:r forKey:@"reportSnapshot"];
-                [item setProperty:r[@"path"] ?: @"" forKey:@"reportPath"];
-                [item setProperty:r[@"category"] ?: @"其他" forKey:@"reportCategory"];
-                [item setProperty:[NSString stringWithFormat:@"%@ · %@",r[@"timestamp"] ?: @"时间未知",r[@"diagnosis"] ?: @"暂无摘要"] forKey:@"footerText"];
-                [rows addObject:item];
-            }
-            NSDictionary *scan=CALogStore.sharedStore.scanDiagnostics;
-            if (CALogStore.sharedStore.reportsReady && (![scan[@"exists"] boolValue] || [scan[@"error"] length])) [rows addObject:CAShortRow([NSString stringWithFormat:@"扫描错误：%@",[scan[@"error"] length]?scan[@"error"]:@"日志目录不存在或不可访问"])];
-            if (!reports.count) [rows addObject:[PSSpecifier preferenceSpecifierNamed:CALogStore.sharedStore.scanInProgress?@"正在后台扫描…":@"扫描完成：没有匹配的日志" target:nil set:nil get:nil detail:nil cell:PSStaticTextCell edit:nil]];
-        }
-        _specifiers=[rows mutableCopy];
-    }
-    return _specifiers;
-}
-- (CGFloat)tableView:(UITableView *)t heightForRowAtIndexPath:(NSIndexPath *)i {PSSpecifier *s=[self specifierAtIndexPath:i];return [s propertyForKey:@"cellClass"]==[CAEvidenceWrappingCell class]?CAEvidenceRowHeight(t,s):[super tableView:t heightForRowAtIndexPath:i];}
-- (void)viewDidLoad { [super viewDidLoad]; self.title=[self reportCategory] ?: @"分类未绑定"; [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(scanUpdated:) name:CALogStoreDidRefreshNotification object:CALogStore.sharedStore]; }
-- (void)viewWillAppear:(BOOL)a {[super viewWillAppear:a];[CALogStore.sharedStore refreshReports];}
-- (void)scanUpdated:(NSNotification *)n {(void)n;[_specifiers release];_specifiers=nil;if(self.viewIfLoaded.window)[self reloadSpecifiers];}
-- (void)dealloc {[[NSNotificationCenter defaultCenter] removeObserver:self];[super dealloc];}
+- (void)rebuildLogSpecifiers { [_specifiers release]; _specifiers=nil; if(self.viewIfLoaded.window) [self reloadSpecifiers]; }
+- (void)viewDidLoad { [super viewDidLoad]; self.title=[self reportCategory] ?: @"最近日志"; self.navigationItem.rightBarButtonItem=[[[UIBarButtonItem alloc] initWithTitle:@"搜索" style:UIBarButtonItemStylePlain target:self action:@selector(searchLogs)] autorelease]; self.navigationItem.leftBarButtonItem=[[[UIBarButtonItem alloc] initWithTitle:@"按时间" style:UIBarButtonItemStylePlain target:self action:@selector(toggleGrouping)] autorelease]; [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(scanUpdated:) name:CALogStoreDidRefreshNotification object:CALogStore.sharedStore]; }
+- (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; [CALogStore.sharedStore refreshReports]; }
+- (void)toggleGrouping { _groupByProcess=!_groupByProcess; self.navigationItem.leftBarButtonItem.title=_groupByProcess?@"按进程":@"按时间"; [self rebuildLogSpecifiers]; }
+- (void)searchLogs { UIAlertController *a=[UIAlertController alertControllerWithTitle:@"搜索日志" message:@"进程、Bundle ID、文件名、异常类型、时间、Jetsam/Panic/watchdog 字段" preferredStyle:UIAlertControllerStyleAlert]; [a addTextFieldWithConfigurationHandler:^(UITextField *f){f.placeholder=@"输入关键词"; f.text=_logQuery;}]; [a addAction:[UIAlertAction actionWithTitle:@"清除" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *x){(void)x;[_logQuery release];_logQuery=nil;[self rebuildLogSpecifiers];}]]; [a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]]; [a addAction:[UIAlertAction actionWithTitle:@"搜索" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){(void)x;[_logQuery release];_logQuery=[a.textFields.firstObject.text copy];[self rebuildLogSpecifiers];}]]; [self presentViewController:a animated:YES completion:nil]; }
+- (void)deleteOne:(PSSpecifier *)s { NSString *path=[s propertyForKey:@"reportPath"]; if(!path.length)return; UIAlertController *a=[UIAlertController alertControllerWithTitle:@"删除这条日志？" message:[s propertyForKey:@"deleteMessage"] preferredStyle:UIAlertControllerStyleAlert]; [a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]]; [a addAction:[UIAlertAction actionWithTitle:@"删除" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *x){(void)x; [CALogStore.sharedStore deleteReportsAtPaths:@[path]];}]]; [self presentViewController:a animated:YES completion:nil]; }
+- (void)deleteSelected { NSArray *paths=[_selectedPaths allObjects]; if(!paths.count){ UIAlertController *a=[UIAlertController alertControllerWithTitle:@"批量删除" message:@"请先在列表中点选“选择删除”条目。" preferredStyle:UIAlertControllerStyleAlert]; [a addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleCancel handler:nil]]; [self presentViewController:a animated:YES completion:nil]; return; } UIAlertController *a=[UIAlertController alertControllerWithTitle:@"批量删除已选择日志？" message:[NSString stringWithFormat:@"将删除 %lu 条；AI/case/plugin evidence 不会删除。",(unsigned long)paths.count] preferredStyle:UIAlertControllerStyleAlert]; [a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]]; [a addAction:[UIAlertAction actionWithTitle:@"删除" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *x){(void)x; [CALogStore.sharedStore deleteReportsAtPaths:paths]; [_selectedPaths removeAllObjects];}]]; [self presentViewController:a animated:YES completion:nil]; }
+- (void)selectForDeletion:(PSSpecifier *)s { NSString *p=[s propertyForKey:@"reportPath"]; if([_selectedPaths containsObject:p])[_selectedPaths removeObject:p]; else if(p.length)[_selectedPaths addObject:p]; [self rebuildLogSpecifiers]; }
+- (id)specifiers { if(!_specifiers){ NSMutableArray *rows=[NSMutableArray array]; NSArray *reports=[self visibleReports]; NSString *mode=_groupByProcess?@"按进程分组":@"按时间倒序"; NSString *q=_logQuery.length?[NSString stringWithFormat:@" · 搜索：%@",_logQuery]:@""; PSSpecifier *head=[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"%@ · %lu 条%@",mode,(unsigned long)reports.count,q] target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]; [head setProperty:@"点击日志查看完整分析；搜索与排序只影响当前列表。" forKey:@"footerText"]; [rows addObject:head]; PSSpecifier *batch=[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"批量删除（已选择 %lu）",(unsigned long)_selectedPaths.count] target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil]; batch.buttonAction=@selector(deleteSelected); [rows addObject:batch]; NSString *lastGroup=nil; for(NSDictionary *r in reports){ NSString *group=_groupByProcess?CAProcessName(r):nil; if(group.length && ![group isEqual:lastGroup]){[rows addObject:[PSSpecifier preferenceSpecifierNamed:group target:nil set:nil get:nil detail:nil cell:PSGroupCell edit:nil]]; lastGroup=group;} NSString *name=r[@"fileName"] ?: r[@"procName"] ?: r[@"app_name"] ?: @"未知日志"; NSString *path=r[@"path"] ?: @""; PSSpecifier *item=[PSSpecifier preferenceSpecifierNamed:name target:nil set:nil get:nil detail:[CAReportDetailController class] cell:PSLinkCell edit:nil]; CAWrapEvidenceRow(item); [item setName:[NSString stringWithFormat:@"%@\n%@ · %@",name,r[@"timestamp"] ?: @"时间未知",r[@"category"] ?: @"其他"]]; [item setProperty:r forKey:@"reportSnapshot"]; [item setProperty:path forKey:@"reportPath"]; [item setProperty:[NSString stringWithFormat:@"%@ · %@",r[@"timestamp"] ?: @"时间未知",r[@"diagnosis"] ?: @"点击查看 Jetsam/Panic/watchdog 专项字段"] forKey:@"footerText"]; [rows addObject:item]; PSSpecifier *pick=[PSSpecifier preferenceSpecifierNamed:[NSString stringWithFormat:@"%@%@",[_selectedPaths containsObject:path]?@"✓ ":@"○ ",name] target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil]; [pick setProperty:path forKey:@"reportPath"]; [pick setProperty:name forKey:@"deleteMessage"]; pick.buttonAction=@selector(selectForDeletion:); [rows addObject:pick]; PSSpecifier *del=[PSSpecifier preferenceSpecifierNamed:@"删除此条日志" target:self set:nil get:nil detail:nil cell:PSButtonCell edit:nil]; [del setProperty:path forKey:@"reportPath"]; [del setProperty:name forKey:@"deleteMessage"]; del.buttonAction=@selector(deleteOne:); [rows addObject:del]; }
+ NSDictionary *scan=CALogStore.sharedStore.scanDiagnostics; if(CALogStore.sharedStore.reportsReady && (![scan[@"exists"] boolValue] || [scan[@"error"] length])) [rows addObject:CAShortRow([NSString stringWithFormat:@"扫描错误：%@",[scan[@"error"] length]?scan[@"error"]:@"日志目录不存在或不可访问"])]; if(!reports.count)[rows addObject:CAShortRow(CALogStore.sharedStore.scanInProgress?@"正在后台扫描…":@"扫描完成：没有匹配的日志")]; _specifiers=[rows mutableCopy]; } return _specifiers; }
+- (CGFloat)tableView:(UITableView *)t heightForRowAtIndexPath:(NSIndexPath *)i { PSSpecifier *s=[self specifierAtIndexPath:i]; return [s propertyForKey:@"cellClass"]==[CAEvidenceWrappingCell class]?CAEvidenceRowHeight(t,s):[super tableView:t heightForRowAtIndexPath:i]; }
+- (void)scanUpdated:(NSNotification *)n {(void)n; [_specifiers release]; _specifiers=nil; if(self.viewIfLoaded.window)[self reloadSpecifiers];}
+- (void)dealloc { [[NSNotificationCenter defaultCenter] removeObserver:self]; [_logQuery release]; [_selectedPaths release]; [super dealloc]; }
 @end
 @implementation CARecentReportsViewController
 - (NSString *)reportCategory { return nil; }

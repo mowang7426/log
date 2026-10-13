@@ -30,6 +30,7 @@ int main(void) { @autoreleasepool {
     Check([[s categoryForReport:@{@"watchdogTimeout":NSNull.null,@"termination":@{@"code":NSNull.null}}] isEqual:@"其他"],@"null termination safe");
     NSDictionary *search=@{@"procName":@"Example",@"bundleInfo":@{@"CFBundleIdentifier":@"com.example.test"},@"fileName":@"Report.ips",@"exception":@{@"type":@"EXC_GUARD"}};
     for(NSString *q in @[@"example",@"com.example",@"report.IPS",@"exc_guard",@""]) Check(CAReportMatches(search,q),@"search real fields");
+    Check(CAReportMatches(@{@"procName":@"App",@"panicString":@"watchdog timeout"},@"watchdog"),@"search special fields");
     Check(!CAReportMatches(search,@"not present"),@"search nonmatch");
     NSDate *a=CAReportDate(@{@"timestamp":@"2026-01-01 10:00:00 +0800"},nil),*b=CAReportDate(@{@"timestamp":@"2026-01-01T03:00:00Z"},nil);
     Check([a compare:b]==NSOrderedAscending,@"true timezone ordering"); Check([CAReportDate(@{@"timestamp":@"bad"},b) isEqualToDate:b],@"date fallback");

@@ -2,8 +2,10 @@
 
 ## 1.4.0 体验版
 
-- 新日志列表：搜索进程、Bundle ID、异常、文件/时间；默认按进程分组，可切换时间视图；原类别入口保留。时间使用 NSDate 与时区解析，缺失或无效时间明确回退文件修改时间。
-- 滑动单条删除和编辑多选删除；确认冻结普通文件路径集合，新增文件不加入，返回实际删除/未删除数；不删除 AI 历史和案例，不自动删除日志。
+- 兼容 Preferences 的 IPSLog 体验列表：入口和详情均为 `PSListController`/`PSSpecifier`，不把普通 `UITableViewController` 交给 `detail`。列表顶部可见“搜索”“按时间/按进程”按钮；搜索覆盖进程、Bundle ID、文件名、时间、异常、Jetsam/Panic/watchdog 字段。
+- 每条日志保留 Preferences 原生详情导航，同时提供“选择删除”和“删除此条日志”；顶部批量删除会二次确认，删除只针对扫描时确认的普通文件，不碰 AI/case/plugin evidence。
+- 详情首屏保留本地分析、AI/case/evidence/workbench/source 入口，并显示解析状态及 Jetsam 所有受害进程、真实 pageSize、Panic 原文摘要、watchdog termination 字段。
+- 保留增量扫描、AI、案例与插件证据。所有新增实现已加入 Makefile；`CAReportDate` 由 CALogExperience.m 提供并随 bundle 编译，避免运行时 undefined symbol。
 - 原文使用等宽 UITextView，后台最多读取 4 MiB；支持选择复制和查找；复制标明预览范围；完整分享显式隐私确认、独立临时目录及完成清理。
 - 单 JSON（compact/pretty/BOM）及双段 JSON 解析；正文失败显式标记部分成功，不计作完整解析。分类只读取结构字段，进程名不再等于崩溃，EXC_RESOURCE/watchdog 优先资源类。
 - Jetsam 展示所有含 reason 的终止进程和真实 pageSize；缺失页大小不换算。Panic/watchdog 展示原字段，不推断硬件或根因。

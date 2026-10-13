@@ -4,7 +4,7 @@ NSString *CAProcessName(NSDictionary *r) { for (NSString *k in @[@"normalizedPro
 BOOL CAReportMatches(NSDictionary *r, NSString *query) {
     if (!query.length) return YES;
     NSMutableArray *parts=[NSMutableArray arrayWithObject:CAProcessName(r)];
-    for (NSString *k in @[@"normalizedBundleID",@"bundleID",@"fileName",@"normalizedExceptionType",@"timestamp",@"category"]) [parts addObject:Text(r[k])];
+    for (NSString *k in @[@"normalizedBundleID",@"bundleID",@"fileName",@"normalizedExceptionType",@"timestamp",@"category",@"bug_type",@"panicString",@"watchdogTimeout",@"reason",@"largestProcess"]) [parts addObject:Text(r[k])];
     if ([r[@"exception"] isKindOfClass:NSDictionary.class]) [parts addObject:[r[@"exception"] description]];
     if ([r[@"termination"] isKindOfClass:NSDictionary.class]) [parts addObject:[r[@"termination"] description]];
     if ([r[@"bundleInfo"] isKindOfClass:NSDictionary.class]) [parts addObject:Text(r[@"bundleInfo"][@"CFBundleIdentifier"])];

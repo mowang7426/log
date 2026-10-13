@@ -1,7 +1,11 @@
 #import <Preferences/PSListController.h>
 #import <UIKit/UIKit.h>
 @class PSSpecifier;
-@interface CAReportViewController : PSListController
+@interface CAReportViewController : PSListController {
+    NSString *_logQuery;
+    BOOL _groupByProcess;
+    NSMutableSet *_selectedPaths;
+}
 - (instancetype)initWithSpecifier:(PSSpecifier *)specifier;
 - (NSString *)reportCategory;
 @end
