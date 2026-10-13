@@ -11,7 +11,7 @@
     BOOL _grouped;
 }
 @synthesize specifier=_specifier;
-- (instancetype)initWithSpecifier:(PSSpecifier *)s { self=[super initWithSpecifier:s]; if(self) self.specifier=s; return self; }
+- (instancetype)initWithSpecifier:(PSSpecifier *)s { self=[super init]; if(self) self.specifier=s; return self; }
 - (NSString *)reportCategory { return nil; }
 - (void)viewDidLoad {
     [super viewDidLoad]; _grouped=YES; _selectedPaths=[NSMutableSet new];
