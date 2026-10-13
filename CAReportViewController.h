@@ -21,8 +21,7 @@
 @interface CAReportDetailController : PSListController
 - (instancetype)initWithSpecifier:(PSSpecifier *)specifier;
 @end
-@interface CAReportSourceController : UIViewController <UISearchBarDelegate>
-@property(nonatomic, retain) PSSpecifier *specifier;
+@interface CAReportSourceController : PSListController
 - (instancetype)initWithSpecifier:(PSSpecifier *)specifier;
 @end
 @interface CAAnalysisController : PSListController
