@@ -56,6 +56,24 @@ static PSSpecifier *CAShortRow(NSString *text) { PSSpecifier *row=[PSSpecifier p
 @end
 @implementation CARecentReportsViewController
 - (NSString *)reportCategory { return nil; }
+- (void)viewDidLoad {
+    [super viewDidLoad];
+    // Keep the Preferences navigation stack and system back gesture intact while
+    // making the requested return action explicit for the root recent-log page.
+    UIBarButtonItem *back=[[[UIBarButtonItem alloc] initWithTitle:@"返回" style:UIBarButtonItemStylePlain target:self action:@selector(CARecentReports_return)] autorelease];
+    self.navigationItem.leftItemsSupplementBackButton=YES;
+    self.navigationItem.leftBarButtonItems=@[back];
+}
+- (void)CARecentReports_return {
+    UINavigationController *navigation=self.navigationController;
+    if (navigation.viewControllers.count > 1) {
+        [navigation popViewControllerAnimated:YES];
+    } else if (self.presentingViewController) {
+        [self dismissViewControllerAnimated:YES completion:nil];
+    } else if (navigation.presentingViewController) {
+        [navigation dismissViewControllerAnimated:YES completion:nil];
+    }
+}
 @end
 @implementation CACrashReportViewController
 - (NSString *)reportCategory { return @"崩溃"; }
