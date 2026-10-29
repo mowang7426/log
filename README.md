@@ -11,7 +11,9 @@
 - Jetsam 展示所有含 reason 的终止进程和真实 pageSize；缺失页大小不换算。Panic/watchdog 展示原字段，不推断硬件或根因。
 - 保留增量扫描、AI、案例与插件证据。未实施 Keychain 迁移、统一 AI 缓存计划、legacy 文本全格式及 lastExceptionBacktrace 证据扩展。
 - 原文查看上限不是索引扫描的内存上限：扫描仍解析完整日志，大文件性能需真机测量。删除固定路径而非 inode；同一路径被替换仍存在竞争窗口。不保证权限不可达日志可读。
-- 最近日志页面仅在 `CARecentReportsViewController` 左上角补充明确的“返回”按钮；动作优先返回 Preferences 导航栈，必要时 dismiss，分类页面不重复添加。仍使用 `PSListController`，并保留系统返回手势与原有日志数据不变。
+- 所有“按类型查看日志”分类页（崩溃、内存、重启、资源、其他及复用分类基类的同类入口）均在左上角提供明确“返回”，优先 pop、无导航栈时 dismiss，并保持系统侧滑返回；右上角提供“清空”，与搜索并存。
+- 分类清空在弹出中文二次确认前冻结当前分类且经 `CALogStore.deletableReportPaths` 核准的路径集合并显示数量；执行复用 `deleteReportsAtPaths:`，不会扩展到后续新增日志、其他分类、AI 历史、案例或插件证据，完成后刷新扫描/当前页并报告成功和失败数量。
+- 最近日志仍保留原有明确“返回”与搜索，不增加分类清空；首页不增加分类清空。入口和详情继续使用 `PSListController`/`PSSpecifier` Preferences 导航。
 - CI/Foundation 回归与 UIKit 包构建不是实际设备安装/视觉/性能验证。未安装插件，未删除用户日志。
 
 ## UI CHANGELOG · 1.4.0-card
