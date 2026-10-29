@@ -46,25 +46,20 @@ static PSSpecifier *CAShortRow(NSString *text) { PSSpecifier *row=[PSSpecifier p
     self.title=[self reportCategory] ?: @"最近日志";
     UIBarButtonItem *search=[[[UIBarButtonItem alloc] initWithTitle:@"搜索" style:UIBarButtonItemStylePlain target:self action:@selector(searchLogs)] autorelease];
     UIBarButtonItem *group=[[[UIBarButtonItem alloc] initWithTitle:@"按时间" style:UIBarButtonItemStylePlain target:self action:@selector(toggleGrouping)] autorelease];
-    self.navigationItem.rightBarButtonItem=search;
-    self.navigationItem.leftBarButtonItem=group;
+    // Every report list is reached through a Preferences PSLinkCell. Keep its
+    // native back item/interactive-pop behavior and supplement it only with
+    // the non-navigation grouping action; never add a second custom back item.
+    self.navigationItem.leftItemsSupplementBackButton=YES;
+    self.navigationItem.leftBarButtonItems=@[group];
     if ([self reportCategory].length) {
-        UIBarButtonItem *back=[[[UIBarButtonItem alloc] initWithTitle:@"返回" style:UIBarButtonItemStylePlain target:self action:@selector(CAReport_return)] autorelease];
         UIBarButtonItem *clear=[[[UIBarButtonItem alloc] initWithTitle:@"清空" style:UIBarButtonItemStylePlain target:self action:@selector(CAReport_clearCategory)] autorelease];
-        self.navigationItem.leftItemsSupplementBackButton=YES;
-        self.navigationItem.leftBarButtonItems=@[back,group];
         self.navigationItem.rightBarButtonItems=@[clear,search];
-        self.navigationController.interactivePopGestureRecognizer.enabled=YES;
+    } else {
+        self.navigationItem.rightBarButtonItem=search;
     }
     [[NSNotificationCenter defaultCenter] addObserver:self selector:@selector(scanUpdated:) name:CALogStoreDidRefreshNotification object:CALogStore.sharedStore];
 }
-- (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; if([self reportCategory].length) self.navigationController.interactivePopGestureRecognizer.enabled=YES; [CALogStore.sharedStore refreshReports]; }
-- (void)CAReport_return {
-    UINavigationController *navigation=self.navigationController;
-    if (navigation.viewControllers.count > 1) [navigation popViewControllerAnimated:YES];
-    else if (self.presentingViewController) [self dismissViewControllerAnimated:YES completion:nil];
-    else if (navigation.presentingViewController) [navigation dismissViewControllerAnimated:YES completion:nil];
-}
+- (void)viewWillAppear:(BOOL)animated { [super viewWillAppear:animated]; [CALogStore.sharedStore refreshReports]; }
 - (void)CAReport_clearCategory {
     NSString *category=[self reportCategory];
     if (!category.length) return;
@@ -93,7 +88,7 @@ static PSSpecifier *CAShortRow(NSString *text) { PSSpecifier *row=[PSSpecifier p
     [self presentViewController:confirm animated:YES completion:nil];
     [paths release];
 }
-- (void)toggleGrouping { _groupByProcess=!_groupByProcess; UIBarButtonItem *group=([self reportCategory].length && self.navigationItem.leftBarButtonItems.count>1)?self.navigationItem.leftBarButtonItems[1]:self.navigationItem.leftBarButtonItem; group.title=_groupByProcess?@"按进程":@"按时间"; [self rebuildLogSpecifiers]; }
+- (void)toggleGrouping { _groupByProcess=!_groupByProcess; self.navigationItem.leftBarButtonItems.firstObject.title=_groupByProcess?@"按进程":@"按时间"; [self rebuildLogSpecifiers]; }
 - (void)searchLogs { UIAlertController *a=[UIAlertController alertControllerWithTitle:@"搜索日志" message:@"进程、Bundle ID、文件名、异常类型、时间、Jetsam/Panic/watchdog 字段" preferredStyle:UIAlertControllerStyleAlert]; [a addTextFieldWithConfigurationHandler:^(UITextField *f){f.placeholder=@"输入关键词"; f.text=_logQuery;}]; [a addAction:[UIAlertAction actionWithTitle:@"清除" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *x){(void)x;[_logQuery release];_logQuery=nil;[self rebuildLogSpecifiers];}]]; [a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]]; [a addAction:[UIAlertAction actionWithTitle:@"搜索" style:UIAlertActionStyleDefault handler:^(UIAlertAction *x){(void)x;[_logQuery release];_logQuery=[a.textFields.firstObject.text copy];[self rebuildLogSpecifiers];}]]; [self presentViewController:a animated:YES completion:nil]; }
 - (void)deleteOne:(PSSpecifier *)s { NSString *path=[s propertyForKey:@"reportPath"]; if(!path.length)return; UIAlertController *a=[UIAlertController alertControllerWithTitle:@"删除这条日志？" message:[s propertyForKey:@"deleteMessage"] preferredStyle:UIAlertControllerStyleAlert]; [a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]]; [a addAction:[UIAlertAction actionWithTitle:@"删除" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *x){(void)x; [CALogStore.sharedStore deleteReportsAtPaths:@[path]];}]]; [self presentViewController:a animated:YES completion:nil]; }
 - (void)deleteSelected { NSArray *paths=[_selectedPaths allObjects]; if(!paths.count){ UIAlertController *a=[UIAlertController alertControllerWithTitle:@"批量删除" message:@"请先在列表中点选“选择删除”条目。" preferredStyle:UIAlertControllerStyleAlert]; [a addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleCancel handler:nil]]; [self presentViewController:a animated:YES completion:nil]; return; } UIAlertController *a=[UIAlertController alertControllerWithTitle:@"批量删除已选择日志？" message:[NSString stringWithFormat:@"将删除 %lu 条；AI/case/plugin evidence 不会删除。",(unsigned long)paths.count] preferredStyle:UIAlertControllerStyleAlert]; [a addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]]; [a addAction:[UIAlertAction actionWithTitle:@"删除" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *x){(void)x; [CALogStore.sharedStore deleteReportsAtPaths:paths]; [_selectedPaths removeAllObjects];}]]; [self presentViewController:a animated:YES completion:nil]; }
@@ -108,21 +103,37 @@ static PSSpecifier *CAShortRow(NSString *text) { PSSpecifier *row=[PSSpecifier p
 - (NSString *)reportCategory { return nil; }
 - (void)viewDidLoad {
     [super viewDidLoad];
-    // Keep the Preferences navigation stack and system back gesture intact while
-    // making the requested return action explicit for the root recent-log page.
-    UIBarButtonItem *back=[[[UIBarButtonItem alloc] initWithTitle:@"返回" style:UIBarButtonItemStylePlain target:self action:@selector(CARecentReports_return)] autorelease];
-    self.navigationItem.leftItemsSupplementBackButton=YES;
-    self.navigationItem.leftBarButtonItems=@[back];
+    UIBarButtonItem *search=self.navigationItem.rightBarButtonItem;
+    UIBarButtonItem *clear=[[[UIBarButtonItem alloc] initWithTitle:@"清空" style:UIBarButtonItemStylePlain target:self action:@selector(CARecentReports_clear)] autorelease];
+    self.navigationItem.rightBarButtonItems=@[clear,search];
 }
-- (void)CARecentReports_return {
-    UINavigationController *navigation=self.navigationController;
-    if (navigation.viewControllers.count > 1) {
-        [navigation popViewControllerAnimated:YES];
-    } else if (self.presentingViewController) {
-        [self dismissViewControllerAnimated:YES completion:nil];
-    } else if (navigation.presentingViewController) {
-        [navigation dismissViewControllerAnimated:YES completion:nil];
+- (void)CARecentReports_clear {
+    // Freeze the complete currently loaded recent set, not the filtered view.
+    NSSet *deletable=[NSSet setWithArray:CALogStore.sharedStore.deletableReportPaths];
+    NSMutableOrderedSet *frozen=[NSMutableOrderedSet orderedSet];
+    for (NSDictionary *report in CALogStore.sharedStore.reports) {
+        NSString *path=report[@"path"];
+        if ([path isKindOfClass:NSString.class] && [deletable containsObject:path]) [frozen addObject:path];
     }
+    NSArray *paths=[[frozen array] copy];
+    NSUInteger count=paths.count;
+    NSString *filterNote=_logQuery.length ? @"当前搜索仅用于显示，不会把清空范围缩小为搜索结果。" : @"清空范围是全部最近日志，不是未来新增日志。";
+    NSString *message=[NSString stringWithFormat:@"将删除确认时冻结的全部最近日志集合中的 %lu 个普通 IPS 文件。%@\nAI 历史、案例和插件证据不会删除。",(unsigned long)count,filterNote];
+    UIAlertController *confirm=[UIAlertController alertControllerWithTitle:@"清空全部最近日志？" message:message preferredStyle:UIAlertControllerStyleAlert];
+    [confirm addAction:[UIAlertAction actionWithTitle:@"取消" style:UIAlertActionStyleCancel handler:nil]];
+    if (count) [confirm addAction:[UIAlertAction actionWithTitle:@"清空" style:UIAlertActionStyleDestructive handler:^(UIAlertAction *action){
+        (void)action;
+        NSUInteger deleted=[CALogStore.sharedStore deleteReportsAtPaths:paths];
+        NSUInteger failed=count-deleted;
+        [_selectedPaths minusSet:[NSSet setWithArray:paths]];
+        [CALogStore.sharedStore refreshReports];
+        [self rebuildLogSpecifiers];
+        UIAlertController *result=[UIAlertController alertControllerWithTitle:@"清空完成" message:[NSString stringWithFormat:@"成功 %lu 个，失败 %lu 个。",(unsigned long)deleted,(unsigned long)failed] preferredStyle:UIAlertControllerStyleAlert];
+        [result addAction:[UIAlertAction actionWithTitle:@"好" style:UIAlertActionStyleCancel handler:nil]];
+        [self presentViewController:result animated:YES completion:nil];
+    }]];
+    [self presentViewController:confirm animated:YES completion:nil];
+    [paths release];
 }
 @end
 @implementation CACrashReportViewController
